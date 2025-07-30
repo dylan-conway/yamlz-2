@@ -444,11 +444,28 @@ The yaml-test-suite no longer uses the old format with embedded YAML in test fil
 
 ## Development Workflow
 
-1. Run tests frequently: `./zig/zig build test`
-2. Focus on one test at a time
-3. Use the reference implementations to understand behavior
-4. Read the compressed spec for grammar rules
-5. Only consult the full spec for specific edge cases
+1. **Use Git for checkpoints**: The project is now under git version control. Make frequent commits as you implement features:
+   ```bash
+   # After implementing a feature (e.g., plain scalars)
+   git add -A
+   git commit -m "Implement plain scalar parsing (15% tests passing)"
+   
+   # After fixing a bug
+   git add -A
+   git commit -m "Fix indentation handling in block sequences (18% tests passing)"
+   ```
+   
+   This allows you to:
+   - Search through history to see what worked: `git log --oneline`
+   - Revert failed experiments: `git reset --hard HEAD~1`
+   - Create branches for experimental features: `git checkout -b try-multiline-scalars`
+   - See what changed: `git diff`
+
+2. Run tests frequently: `./zig/zig build test-yaml -- zig`
+3. Focus on one test at a time - use verbose mode to identify specific failures
+4. Use the reference implementations to understand behavior
+5. Read the compressed spec for grammar rules
+6. Only consult the full spec for specific edge cases
 
 ## Common Pitfalls to Avoid
 
@@ -467,6 +484,32 @@ The yaml-test-suite no longer uses the old format with embedded YAML in test fil
 ## Getting Started
 
 The project has been initialized with `./zig/zig init`. The test runner is already implemented and can compare your parser against TypeScript and Rust implementations.
+
+### Git Best Practices for This Project
+
+Since the project is under git version control, follow these practices:
+
+1. **Commit Early and Often**: Make a commit after each successfully implemented feature
+2. **Meaningful Commit Messages**: Include the test pass percentage in commit messages
+   ```bash
+   git commit -m "Implement flow sequences [1,2,3] (45% tests passing)"
+   ```
+3. **Use Branches for Experiments**: Try risky changes in a branch
+   ```bash
+   git checkout -b experiment-multiline-strings
+   # ... make changes ...
+   # If it works:
+   git checkout main
+   git merge experiment-multiline-strings
+   # If it doesn't:
+   git checkout main
+   git branch -D experiment-multiline-strings
+   ```
+4. **Tag Milestones**: Tag significant progress points
+   ```bash
+   git tag -a v50-percent -m "Reached 50% test pass rate"
+   git tag -a v75-percent -m "Reached 75% test pass rate"
+   ```
 
 ### Running Tests
 
@@ -508,10 +551,18 @@ Remember: Start simple, test often, and incrementally add complexity. The recurs
 
 ## Iterative Development Strategy
 
-1. **Start with the test runner** - Get it working first so you can measure progress
-2. **Implement minimal parser** that fails on everything (0% baseline)
-3. **Pick simplest test cases** - Look for tests with just plain scalars like `"hello"`
-4. **Implement one feature at a time**:
+1. **Start with the test runner** ✅ - Already implemented with verbose mode support
+2. **Implement minimal parser** - Currently returns error for all inputs (23.4% baseline from expected-to-fail tests)
+3. **Commit your starting point**:
+   ```bash
+   git add -A
+   git commit -m "Initial project setup with test runner (23.4% baseline)"
+   ```
+4. **Pick simplest test cases** - Use verbose mode to find simple failing tests:
+   ```bash
+   ./zig/zig build test-yaml -- zig --verbose | grep "✗" | head -20
+   ```
+5. **Implement one feature at a time**:
    - Plain scalars first (gets you ~10-15%)
    - Simple sequences `[1, 2, 3]` 
    - Simple mappings `{a: 1, b: 2}`
@@ -519,8 +570,19 @@ Remember: Start simple, test often, and incrementally add complexity. The recurs
    - Block mappings with indentation
    - Quoted strings
    - And so on...
-5. **Run tests after each feature** - See the percentage climb
-6. **Debug with specific tests** - When a test fails, print the input and see what's happening
-7. **Don't worry about perfection** - Get to 98% first, then polish
+6. **Commit after each feature**:
+   ```bash
+   # After implementing plain scalars
+   git add -A
+   git commit -m "Add plain scalar parsing (38% tests passing)"
+   ```
+7. **Run tests after each feature** - See the percentage climb
+8. **Debug with specific tests** - When a test fails, examine it:
+   ```bash
+   # Look at a specific failing test
+   cat yaml-test-suite/735Y/in.yaml
+   cat yaml-test-suite/735Y/===  # test description
+   ```
+9. **Don't worry about perfection** - Get to 98% first, then polish
 
-The beauty of this approach is you'll see constant progress and always know what to work on next (whatever test is failing).
+The beauty of this approach is you'll see constant progress and always know what to work on next (whatever test is failing). Git history will show your journey from 23.4% to 98%+.
