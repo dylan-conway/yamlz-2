@@ -501,7 +501,7 @@ pub const Parser = struct {
             self.lexer.advanceChar();
             
             if (self.lexer.peek() == ' ' or Lexer.isLineBreak(self.lexer.peek())) {
-                self.skipSpaces();
+                try self.skipSpacesCheckTabs();
                 
                 var value: ?*ast.Node = null;
                 
@@ -697,8 +697,17 @@ pub const Parser = struct {
         var chomp_indicator: enum { clip, strip, keep } = .clip;
         var explicit_indent: ?usize = null;
         
-        // Check for chomping indicator
-        const ch = self.lexer.peek();
+        // Block scalar indicators can come in either order: chomp then indent or indent then chomp
+        var ch = self.lexer.peek();
+        
+        // First, check for indent indicator (digit)
+        if (Lexer.isDecimal(ch)) {
+            explicit_indent = @as(usize, ch - '0');
+            self.lexer.advanceChar();
+            ch = self.lexer.peek();
+        }
+        
+        // Then check for chomp indicator
         if (ch == '-') {
             chomp_indicator = .strip;
             self.lexer.advanceChar();
@@ -707,10 +716,17 @@ pub const Parser = struct {
             self.lexer.advanceChar();
         }
         
-        // Check for explicit indentation
-        if (Lexer.isDecimal(self.lexer.peek())) {
+        // If we didn't find indent before chomp, check again after chomp
+        if (explicit_indent == null and Lexer.isDecimal(self.lexer.peek())) {
             explicit_indent = @as(usize, self.lexer.peek() - '0');
             self.lexer.advanceChar();
+        }
+        
+        // After indicators, only whitespace and comments are allowed
+        self.skipSpaces();
+        if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and self.lexer.peek() != '#') {
+            // Invalid text after block scalar indicator
+            return error.InvalidBlockScalar;
         }
         
         // Skip to end of indicator line
@@ -826,8 +842,17 @@ pub const Parser = struct {
         var chomp_indicator: enum { clip, strip, keep } = .clip;
         var explicit_indent: ?usize = null;
         
-        // Check for chomping indicator
-        const ch = self.lexer.peek();
+        // Block scalar indicators can come in either order: chomp then indent or indent then chomp
+        var ch = self.lexer.peek();
+        
+        // First, check for indent indicator (digit)
+        if (Lexer.isDecimal(ch)) {
+            explicit_indent = @as(usize, ch - '0');
+            self.lexer.advanceChar();
+            ch = self.lexer.peek();
+        }
+        
+        // Then check for chomp indicator
         if (ch == '-') {
             chomp_indicator = .strip;
             self.lexer.advanceChar();
@@ -836,10 +861,17 @@ pub const Parser = struct {
             self.lexer.advanceChar();
         }
         
-        // Check for explicit indentation
-        if (Lexer.isDecimal(self.lexer.peek())) {
+        // If we didn't find indent before chomp, check again after chomp
+        if (explicit_indent == null and Lexer.isDecimal(self.lexer.peek())) {
             explicit_indent = @as(usize, self.lexer.peek() - '0');
             self.lexer.advanceChar();
+        }
+        
+        // After indicators, only whitespace and comments are allowed
+        self.skipSpaces();
+        if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and self.lexer.peek() != '#') {
+            // Invalid text after block scalar indicator
+            return error.InvalidBlockScalar;
         }
         
         // Skip to end of indicator line
@@ -978,6 +1010,14 @@ pub const Parser = struct {
     }
     
     fn skipSpaces(self: *Parser) void {
+        self.lexer.skipSpaces();
+    }
+    
+    fn skipSpacesCheckTabs(self: *Parser) ParseError!void {
+        // In many contexts, tabs are not allowed where spaces are expected
+        if (self.lexer.peek() == '\t') {
+            return error.TabsNotAllowed;
+        }
         self.lexer.skipSpaces();
     }
     
