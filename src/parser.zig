@@ -751,7 +751,8 @@ pub const Parser = struct {
         }
         
         // After indicators, only whitespace and comments are allowed
-        self.skipSpaces();
+        // Tabs are not allowed after block scalar indicators
+        try self.skipSpacesCheckTabs();
         if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and self.lexer.peek() != '#') {
             // Invalid text after block scalar indicator
             return error.InvalidBlockScalar;
@@ -896,7 +897,8 @@ pub const Parser = struct {
         }
         
         // After indicators, only whitespace and comments are allowed
-        self.skipSpaces();
+        // Tabs are not allowed after block scalar indicators
+        try self.skipSpacesCheckTabs();
         if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and self.lexer.peek() != '#') {
             // Invalid text after block scalar indicator
             return error.InvalidBlockScalar;
