@@ -23,6 +23,10 @@ pub const ParseError = error{
     InvalidDocumentStart,
     InvalidDirective,
     UnexpectedContent,
+    DirectiveAfterContent,
+    DuplicateYamlDirective,
+    UnsupportedYamlVersion,
+    UnknownDirective,
 };
 
 pub const Parser = struct {
@@ -45,12 +49,66 @@ pub const Parser = struct {
     pub fn parseDocument(self: *Parser) ParseError!ast.Document {
         self.skipWhitespaceAndComments();
         
-        var has_directives = false;
+        // Parse directives
+        var has_yaml_directive = false;
         
-        if (self.lexer.match("---")) {
-            self.lexer.advance(3);
-            has_directives = true;
-            self.skipWhitespaceAndComments();
+        while (!self.lexer.isEOF()) {
+            // Check for directive
+            if (self.lexer.peek() == '%') {
+                self.lexer.advanceChar(); // Skip '%'
+                
+                // Parse directive name
+                const directive_start = self.lexer.pos;
+                while (!self.lexer.isEOF() and !Lexer.isWhitespace(self.lexer.peek()) and !Lexer.isLineBreak(self.lexer.peek())) {
+                    self.lexer.advanceChar();
+                }
+                const directive_name = self.lexer.input[directive_start..self.lexer.pos];
+                
+                if (std.mem.eql(u8, directive_name, "YAML")) {
+                    if (has_yaml_directive) {
+                        return error.DuplicateYamlDirective;
+                    }
+                    has_yaml_directive = true;
+                    
+                    // Skip whitespace and parse version
+                    self.skipSpaces();
+                    const version_start = self.lexer.pos;
+                    while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
+                        self.lexer.advanceChar();
+                    }
+                    const version = std.mem.trim(u8, self.lexer.input[version_start..self.lexer.pos], " \t");
+                    
+                    // We only support YAML 1.2
+                    if (!std.mem.eql(u8, version, "1.2")) {
+                        return error.UnsupportedYamlVersion;
+                    }
+                } else if (std.mem.eql(u8, directive_name, "TAG")) {
+                    // Skip TAG directive for now - we don't support custom tags yet
+                    self.lexer.skipToEndOfLine();
+                } else {
+                    // Unknown directive - skip it with a warning (not an error)
+                    self.lexer.skipToEndOfLine();
+                }
+                
+                // Skip to end of line
+                self.lexer.skipToEndOfLine();
+                _ = self.lexer.skipLineBreak();
+                self.skipWhitespaceAndComments();
+            } else if (self.lexer.match("---")) {
+                self.lexer.advance(3);
+                self.skipWhitespaceAndComments();
+                break;
+            } else if (self.lexer.match("...")) {
+                // Document end marker without content
+                self.lexer.advance(3);
+                return ast.Document{
+                    .root = null,
+                    .allocator = self.arena.allocator(),
+                };
+            } else {
+                // Content starts - parse it and exit the directive loop
+                break;
+            }
         }
         
         const root = if (self.lexer.isEOF()) null else try self.parseValue(0);
@@ -249,10 +307,13 @@ pub const Parser = struct {
     }
     
     fn parsePlainScalar(self: *Parser) ParseError!*ast.Node {
+        return self.parsePlainScalarInternal(false);
+    }
+    
+    fn parsePlainScalarInternal(self: *Parser, is_mapping_value: bool) ParseError!*ast.Node {
         const start_pos = self.lexer.pos;
         var end_pos = start_pos;
         const initial_indent = self.lexer.column;
-        const in_block_context = initial_indent > 0; // We're in block context if indented
         
         // First, consume the first line
         while (!self.lexer.isEOF()) {
@@ -270,7 +331,12 @@ pub const Parser = struct {
         }
         
         // Now handle potential multi-line scalars
-        if (in_block_context and !self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek())) {
+        if (!self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek())) {
+            var first_continuation_indent: ?usize = null;
+            
+            // Debug
+            // std.debug.print("Checking for multi-line scalar at pos {}, initial_indent={}\n", .{self.lexer.pos, initial_indent});
+            
             while (!self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek())) {
                 const line_break_pos = self.lexer.pos;
                 self.lexer.advanceChar(); // Skip line break
@@ -292,26 +358,34 @@ pub const Parser = struct {
                     continue;
                 }
                 
-                // For continuation, line must be more indented
+                // For continuation, line must be more indented than the key
                 if (new_indent <= initial_indent) {
                     // Not a continuation - restore position to before line break
                     self.lexer.pos = line_break_pos;
                     break;
                 }
                 
-                // Check for mapping indicator on this line
-                var check_pos = self.lexer.pos;
-                while (check_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[check_pos])) {
-                    if (self.lexer.input[check_pos] == ':') {
-                        // Check if it's followed by space/newline/EOF
-                        if (check_pos + 1 >= self.lexer.input.len or
-                            self.lexer.input[check_pos + 1] == ' ' or
-                            Lexer.isLineBreak(self.lexer.input[check_pos + 1])) {
-                            // This is a mapping indicator - not allowed in plain scalar
-                            return error.InvalidPlainScalar;
+                // If this is the first continuation line, remember its indent
+                if (first_continuation_indent == null) {
+                    first_continuation_indent = new_indent;
+                }
+                
+                // If we're parsing a mapping value, check for mapping indicators
+                // on continuation lines at the same indent level as the first line
+                if (is_mapping_value and first_continuation_indent != null and new_indent == initial_indent) {
+                    var check_pos = self.lexer.pos;
+                    while (check_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[check_pos])) {
+                        if (self.lexer.input[check_pos] == ':') {
+                            // Check if it's followed by space/newline/EOF
+                            if (check_pos + 1 >= self.lexer.input.len or
+                                self.lexer.input[check_pos + 1] == ' ' or
+                                Lexer.isLineBreak(self.lexer.input[check_pos + 1])) {
+                                // This is a mapping indicator - not allowed in plain scalar value
+                                return error.InvalidPlainScalar;
+                            }
                         }
+                        check_pos += 1;
                     }
-                    check_pos += 1;
                 }
                 
                 // This line is part of the scalar - consume it
