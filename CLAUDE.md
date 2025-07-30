@@ -6,9 +6,9 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
 
 ## Current Implementation Status
 
-**Test Pass Rate**: 284/402 (70.6%)
+**Test Pass Rate**: 291/402 (72.4%)
 - Target: 394/402 (98%)
-- Gap: 110 tests
+- Gap: 103 tests
 
 ### Features Implemented
 1. **Core Parsing**:
@@ -29,20 +29,63 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
    - Special values (null, true/false, .inf, .nan)
    - YAML 1.1 boolean compatibility (yes/no, on/off, y/n)
 
-3. **Architecture**:
+3. **Recent Fixes**:
+   - Flow sequence empty entry validation (CTN5)
+   - Block scalar indicator validation (S4GJ, D83L)
+   - Tab validation in block sequences (Y79Y/004, Y79Y/010)
+   - Trailing comma support in flow sequences (UDR7)
+
+4. **Architecture**:
    - Clean separation: lexer.zig, ast.zig, parser.zig
    - Arena allocator for memory management
    - Proper line/column tracking
    - Test runner comparing against reference implementations
 
 ### Remaining Work to Reach 98%
-To close the 110-test gap, implement:
+To close the 103-test gap, prioritize these high-impact areas:
 
-1. **Strict validation** (currently too permissive on ~50 tests)
-2. **Better whitespace/indentation handling** 
-3. **Document directives** (`%YAML 1.2`, `%TAG`)
-4. **Complex flow structures** (nested quotes in flow)
-5. **Edge cases** in multi-line scalars and indentation
+1. **Tab Validation** (~15 tests): Complete Y79Y test suite
+   - Tabs after explicit key indicator (?)
+   - Tabs after mapping value indicator (:)
+   - Tabs in flow contexts
+   - Tabs in literal/folded scalars
+
+2. **Document Directives** (~10 tests): 
+   - %YAML version directives
+   - %TAG directives
+   - Invalid directive handling
+
+3. **Flow Mapping Issues** (~20 tests):
+   - Explicit key syntax (? key : value)
+   - Empty keys and values
+   - Complex nesting
+   - Colon in plain scalars (like :x)
+
+4. **Plain Scalar Edge Cases** (~15 tests):
+   - Multi-line implicit keys (HU3P)
+   - Comments interrupting scalars (8XDJ)
+   - Special characters at start
+   - Context-sensitive parsing
+
+5. **Indentation Validation** (~20 tests):
+   - Inconsistent indentation detection
+   - Mixed indentation levels
+   - Zero indentation handling
+
+6. **String Escape Sequences** (~10 tests):
+   - Invalid escape sequences
+   - Unicode escapes
+   - Quote handling
+
+7. **Special Values** (~10 tests):
+   - Additional null/boolean variations
+   - Number format validation
+   - Invalid special values
+
+### Known Issues
+- Parser is too permissive in many cases (many "expected error, got success" failures)
+- Need better error propagation for specific validation failures
+- Indentation tracking could be more robust
 
 ## Important Resources
 
