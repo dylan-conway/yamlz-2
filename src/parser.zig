@@ -145,7 +145,7 @@ pub const Parser = struct {
             const current_column = self.lexer.column;
             if (current_column < min_indent) return null;
             
-            if (ch == '-' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
+            if (ch == '-' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
                 node = try self.parseBlockSequence(min_indent);
             } else if (self.isPlainScalarStart(ch)) {
                 const save_pos = self.lexer.pos;
@@ -473,9 +473,28 @@ pub const Parser = struct {
             const current_indent = self.getCurrentIndent();
             if (current_indent < min_indent) break;
             
-            if (self.lexer.peek() == '-' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
+            if (self.lexer.peek() == '-' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
                 self.lexer.advanceChar(); // Skip '-'
-                try self.skipSpacesCheckTabs();
+                
+                // Special handling for tabs after dash
+                if (self.lexer.peek() == '\t') {
+                    self.lexer.advanceChar(); // Skip tab
+                    
+                    // Check what follows the tab
+                    const after_tab = self.lexer.peek();
+                    
+                    // Check if it's another block sequence indicator
+                    if (after_tab == '-' and self.lexer.pos + 1 < self.lexer.input.len) {
+                        const after_dash = self.lexer.peekNext();
+                        // -\t- followed by space/tab/newline/eof is invalid
+                        if (after_dash == ' ' or after_dash == '\t' or after_dash == '\n' or after_dash == '\r' or after_dash == 0) {
+                            return error.TabsNotAllowed;
+                        }
+                    }
+                    // Otherwise continue normally (e.g., -\t-1 is valid)
+                } else {
+                    try self.skipSpacesCheckTabs();
+                }
                 
                 const item = try self.parseValue(current_indent + 1) orelse try self.createNullNode();
                 try node.data.sequence.items.append(item);
