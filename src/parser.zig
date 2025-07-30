@@ -9,6 +9,19 @@ pub const ParseError = error{
     ExpectedColon,
     InvalidHexEscape,
     OutOfMemory,
+    EmptyFlowEntry,
+    InvalidPlainScalar,
+    InvalidIndentation,
+    UnexpectedCharacter,
+    InvalidFlowMapping,
+    InvalidBlockScalar,
+    InvalidAlias,
+    InvalidAnchor,
+    InvalidTag,
+    DuplicateKey,
+    TabsNotAllowed,
+    InvalidDocumentStart,
+    InvalidDirective,
 };
 
 pub const Parser = struct {
@@ -149,6 +162,32 @@ pub const Parser = struct {
                     node = try self.parseBlockMapping(min_indent);
                 } else {
                     node = scalar;
+                    
+                    // Check for multi-line implicit key situation in block context
+                    // This can happen even at root level (min_indent = 0)
+                    const saved_pos = self.lexer.pos;
+                    self.skipWhitespaceAndComments();
+                    
+                    if (!self.lexer.isEOF()) {
+                        const next_indent = self.getCurrentIndent();
+                        // If next line is at same indent as this scalar
+                        if (next_indent == current_column) {
+                            // Check for mapping indicator
+                            var scan_pos = self.lexer.pos;
+                            while (scan_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[scan_pos])) {
+                                if (self.lexer.input[scan_pos] == ':' and
+                                    (scan_pos + 1 >= self.lexer.input.len or
+                                     self.lexer.input[scan_pos + 1] == ' ' or
+                                     Lexer.isLineBreak(self.lexer.input[scan_pos + 1]))) {
+                                    // Multi-line implicit key detected
+                                    return error.InvalidPlainScalar;
+                                }
+                                scan_pos += 1;
+                            }
+                        }
+                    }
+                    
+                    self.lexer.pos = saved_pos;
                 }
             } else {
                 node = try self.parsePlainScalar();
@@ -171,7 +210,10 @@ pub const Parser = struct {
     fn parsePlainScalar(self: *Parser) ParseError!*ast.Node {
         const start_pos = self.lexer.pos;
         var end_pos = start_pos;
+        const initial_indent = self.lexer.column;
+        const in_block_context = initial_indent > 0; // We're in block context if indented
         
+        // First, consume the first line
         while (!self.lexer.isEOF()) {
             const ch = self.lexer.peek();
             
@@ -183,6 +225,57 @@ pub const Parser = struct {
             self.lexer.advanceChar();
             if (!Lexer.isWhitespace(ch)) {
                 end_pos = self.lexer.pos;
+            }
+        }
+        
+        // Now handle potential multi-line scalars
+        if (in_block_context and !self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek())) {
+            while (!self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek())) {
+                const line_break_pos = self.lexer.pos;
+                self.lexer.advanceChar(); // Skip line break
+                
+                // Skip spaces on new line
+                self.skipSpaces();
+                const new_indent = self.lexer.column;
+                
+                // Check what's on this line
+                if (self.lexer.isEOF() or Lexer.isLineBreak(self.lexer.peek())) {
+                    // Empty line - continue
+                    continue;
+                }
+                
+                // For continuation, line must be more indented
+                if (new_indent <= initial_indent) {
+                    // Not a continuation - restore position to before line break
+                    self.lexer.pos = line_break_pos;
+                    break;
+                }
+                
+                // Check for mapping indicator on this line
+                var check_pos = self.lexer.pos;
+                while (check_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[check_pos])) {
+                    if (self.lexer.input[check_pos] == ':') {
+                        // Check if it's followed by space/newline/EOF
+                        if (check_pos + 1 >= self.lexer.input.len or
+                            self.lexer.input[check_pos + 1] == ' ' or
+                            Lexer.isLineBreak(self.lexer.input[check_pos + 1])) {
+                            // This is a mapping indicator - not allowed in plain scalar
+                            return error.InvalidPlainScalar;
+                        }
+                    }
+                    check_pos += 1;
+                }
+                
+                // This line is part of the scalar - consume it
+                while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
+                    const ch = self.lexer.peek();
+                    if (ch == '#' and self.lexer.input[self.lexer.pos - 1] == ' ') break;
+                    
+                    self.lexer.advanceChar();
+                    if (!Lexer.isWhitespace(ch)) {
+                        end_pos = self.lexer.pos;
+                    }
+                }
             }
         }
         
@@ -230,52 +323,58 @@ pub const Parser = struct {
             .data = .{ .sequence = .{ .items = std.ArrayList(*ast.Node).init(self.arena.allocator()) } },
         };
         
+        var first_item = true;
+        
         while (!self.lexer.isEOF() and self.lexer.peek() != ']') {
+            // Handle empty entries
             if (self.lexer.peek() == ',') {
+                if (first_item) {
+                    // Leading comma not allowed
+                    return error.EmptyFlowEntry;
+                }
+                // Check for consecutive commas (empty entry)
                 self.lexer.advanceChar();
                 self.skipWhitespaceAndComments();
+                if (self.lexer.peek() == ',' or self.lexer.peek() == ']') {
+                    // Empty entry not allowed
+                    return error.EmptyFlowEntry;
+                }
                 continue;
             }
             
-            // Check for empty item
-            if (self.lexer.peek() == ',' or self.lexer.peek() == ']') {
-                const empty_item = try self.createNullNode();
-                try node.data.sequence.items.append(empty_item);
-            } else {
-                // Check if this is a key-value pair (mapping inside sequence)
-                const item = try self.parseValue(0);
-                if (item) |value| {
+            // Parse item
+            const item = try self.parseValue(0);
+            if (item) |value| {
+                self.skipWhitespaceAndComments();
+                
+                // Check if this is a mapping key
+                if (self.lexer.peek() == ':') {
+                    // This is a single-pair mapping
+                    self.lexer.advanceChar(); // Skip ':'
                     self.skipWhitespaceAndComments();
                     
-                    // Check if this is a mapping key
-                    if (self.lexer.peek() == ':') {
-                        // This is a single-pair mapping
-                        self.lexer.advanceChar(); // Skip ':'
-                        self.skipWhitespaceAndComments();
-                        
-                        const map_value = try self.parseValue(0) orelse try self.createNullNode();
-                        
-                        // Create a mapping with single pair
-                        const map_node = try self.arena.allocator().create(ast.Node);
-                        map_node.* = .{
-                            .type = .mapping,
-                            .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.arena.allocator()) } },
-                        };
-                        try map_node.data.mapping.pairs.append(.{ .key = value, .value = map_value });
-                        try node.data.sequence.items.append(map_node);
-                    } else {
-                        try node.data.sequence.items.append(value);
-                    }
+                    const map_value = try self.parseValue(0) orelse try self.createNullNode();
+                    
+                    // Create a mapping with single pair
+                    const map_node = try self.arena.allocator().create(ast.Node);
+                    map_node.* = .{
+                        .type = .mapping,
+                        .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.arena.allocator()) } },
+                    };
+                    try map_node.data.mapping.pairs.append(.{ .key = value, .value = map_value });
+                    try node.data.sequence.items.append(map_node);
+                } else {
+                    try node.data.sequence.items.append(value);
                 }
+                first_item = false;
             }
             
             self.skipWhitespaceAndComments();
             
-            if (self.lexer.peek() == ',') {
-                self.lexer.advanceChar();
-                self.skipWhitespaceAndComments();
-            }
+            // Don't consume trailing comma yet
         }
+        
+        // Trailing comma is allowed in YAML 1.2 flow sequences
         
         if (self.lexer.peek() == ']') {
             self.lexer.advanceChar();
@@ -414,6 +513,39 @@ pub const Parser = struct {
                     }
                 } else {
                     value = try self.parseValue(current_indent);
+                    
+                    // After parsing a plain scalar value, check if the next line at the same
+                    // indentation as the value contains a mapping indicator, which would
+                    // create an invalid multi-line implicit key
+                    if (value != null and value.?.type == .scalar and value.?.data.scalar.style == .plain) {
+                        const saved_pos = self.lexer.pos;
+                        self.skipWhitespaceAndComments();
+                        
+                        if (!self.lexer.isEOF()) {
+                            const next_line_indent = self.getCurrentIndent();
+                            // The value was parsed starting from after the spaces following the colon
+                            // We need to check if the next line is at the same indentation as where
+                            // the value started (which would be current_indent + some spaces)
+                            // For HU3P: "key:" is at indent 0, value "word1 word2" starts at column 3
+                            // and "no: key" is also at column 3
+                            if (next_line_indent > current_indent) {
+                                // Check for mapping indicator
+                                var scan_pos = self.lexer.pos;
+                                while (scan_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[scan_pos])) {
+                                    if (self.lexer.input[scan_pos] == ':' and
+                                        (scan_pos + 1 >= self.lexer.input.len or
+                                         self.lexer.input[scan_pos + 1] == ' ' or
+                                         Lexer.isLineBreak(self.lexer.input[scan_pos + 1]))) {
+                                        // This creates a multi-line implicit key
+                                        return error.InvalidPlainScalar;
+                                    }
+                                    scan_pos += 1;
+                                }
+                            }
+                        }
+                        
+                        self.lexer.pos = saved_pos;
+                    }
                 }
                 
                 if (value == null) {
