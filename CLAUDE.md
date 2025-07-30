@@ -4,6 +4,46 @@
 
 You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing approach. The goal is to achieve 98%+ passing tests from the official YAML test suite.
 
+## Current Implementation Status
+
+**Test Pass Rate**: 284/402 (70.6%)
+- Target: 394/402 (98%)
+- Gap: 110 tests
+
+### Features Implemented
+1. **Core Parsing**:
+   - Recursive descent parser with arena allocator
+   - Plain scalars with special value recognition
+   - Single and double quoted strings with escape sequences
+   - Block and flow sequences
+   - Block and flow mappings
+   - Multi-line scalars (literal `|` and folded `>`)
+   - Comments handling
+   - Anchors (`&anchor`) and aliases (`*anchor`)
+   - Tags (`!tag`, `!!tag`)
+
+2. **Complex Features**:
+   - Empty keys and values in mappings
+   - Explicit key indicators (`?`)
+   - Mappings inside sequences
+   - Special values (null, true/false, .inf, .nan)
+   - YAML 1.1 boolean compatibility (yes/no, on/off, y/n)
+
+3. **Architecture**:
+   - Clean separation: lexer.zig, ast.zig, parser.zig
+   - Arena allocator for memory management
+   - Proper line/column tracking
+   - Test runner comparing against reference implementations
+
+### Remaining Work to Reach 98%
+To close the 110-test gap, implement:
+
+1. **Strict validation** (currently too permissive on ~50 tests)
+2. **Better whitespace/indentation handling** 
+3. **Document directives** (`%YAML 1.2`, `%TAG`)
+4. **Complex flow structures** (nested quotes in flow)
+5. **Edge cases** in multi-line scalars and indentation
+
 ## Important Resources
 
 - **Zig Compiler**: Use `./zig/zig` for all compilation and execution
