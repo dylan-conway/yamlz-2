@@ -343,10 +343,11 @@ pub const Parser = struct {
                 // Check for consecutive commas (empty entry)
                 self.lexer.advanceChar();
                 self.skipWhitespaceAndComments();
-                if (self.lexer.peek() == ',' or self.lexer.peek() == ']') {
-                    // Empty entry not allowed
+                if (self.lexer.peek() == ',') {
+                    // Empty entry not allowed (consecutive commas)
                     return error.EmptyFlowEntry;
                 }
+                // Trailing comma before ] is allowed in YAML 1.2
                 continue;
             }
             
