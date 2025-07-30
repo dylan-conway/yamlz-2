@@ -147,6 +147,46 @@ pub const Parser = struct {
             
             if (ch == '-' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
                 node = try self.parseBlockSequence(min_indent);
+            } else if (ch == '?' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
+                // Explicit key indicator in block context
+                self.lexer.advanceChar(); // Skip '?'
+                try self.skipSpacesCheckTabs();
+                self.skipWhitespaceAndComments();
+                
+                // Parse the key
+                const key = try self.parseValue(min_indent) orelse try self.createNullNode();
+                
+                // Skip to next line and check for value
+                self.skipWhitespaceAndComments();
+                
+                // Look for the ':' on the same or next line
+                if (self.lexer.peek() == ':') {
+                    self.lexer.advanceChar();
+                    try self.skipSpacesCheckTabs();
+                    
+                    var value: ?*ast.Node = null;
+                    if (Lexer.isLineBreak(self.lexer.peek()) or self.lexer.isEOF()) {
+                        self.skipToNextLine();
+                        const value_indent = self.getCurrentIndent();
+                        if (value_indent > min_indent) {
+                            value = try self.parseValue(value_indent);
+                        }
+                    } else {
+                        value = try self.parseValue(min_indent);
+                    }
+                    
+                    // Create a mapping with single pair
+                    const map_node = try self.arena.allocator().create(ast.Node);
+                    map_node.* = .{
+                        .type = .mapping,
+                        .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.arena.allocator()) } },
+                    };
+                    try map_node.data.mapping.pairs.append(.{ .key = key, .value = value orelse try self.createNullNode() });
+                    node = map_node;
+                } else {
+                    // If no colon found, this is an error - explicit key requires value
+                    return error.ExpectedColon;
+                }
             } else if (self.isPlainScalarStart(ch)) {
                 const save_pos = self.lexer.pos;
                 const save_line = self.lexer.line;
@@ -323,7 +363,7 @@ pub const Parser = struct {
     
     fn parseFlowSequence(self: *Parser) ParseError!*ast.Node {
         self.lexer.advanceChar(); // Skip '['
-        self.skipWhitespaceAndComments();
+        try self.skipWhitespaceAndCommentsInFlow();
         
         const node = try self.arena.allocator().create(ast.Node);
         node.* = .{
@@ -342,7 +382,7 @@ pub const Parser = struct {
                 }
                 // Check for consecutive commas (empty entry)
                 self.lexer.advanceChar();
-                self.skipWhitespaceAndComments();
+                try self.skipWhitespaceAndCommentsInFlow();
                 if (self.lexer.peek() == ',') {
                     // Empty entry not allowed (consecutive commas)
                     return error.EmptyFlowEntry;
@@ -354,13 +394,13 @@ pub const Parser = struct {
             // Parse item
             const item = try self.parseValue(0);
             if (item) |value| {
-                self.skipWhitespaceAndComments();
+                try self.skipWhitespaceAndCommentsInFlow();
                 
                 // Check if this is a mapping key
                 if (self.lexer.peek() == ':') {
                     // This is a single-pair mapping
                     self.lexer.advanceChar(); // Skip ':'
-                    self.skipWhitespaceAndComments();
+                    try self.skipWhitespaceAndCommentsInFlow();
                     
                     const map_value = try self.parseValue(0) orelse try self.createNullNode();
                     
@@ -378,7 +418,7 @@ pub const Parser = struct {
                 first_item = false;
             }
             
-            self.skipWhitespaceAndComments();
+            try self.skipWhitespaceAndCommentsInFlow();
             
             // Don't consume trailing comma yet
         }
@@ -396,7 +436,7 @@ pub const Parser = struct {
     
     fn parseFlowMapping(self: *Parser) ParseError!*ast.Node {
         self.lexer.advanceChar(); // Skip '{'
-        self.skipWhitespaceAndComments();
+        try self.skipWhitespaceAndCommentsInFlow();
         
         const node = try self.arena.allocator().create(ast.Node);
         node.* = .{
@@ -407,7 +447,7 @@ pub const Parser = struct {
         while (!self.lexer.isEOF() and self.lexer.peek() != '}') {
             if (self.lexer.peek() == ',') {
                 self.lexer.advanceChar();
-                self.skipWhitespaceAndComments();
+                try self.skipWhitespaceAndCommentsInFlow();
                 continue;
             }
             
@@ -420,21 +460,21 @@ pub const Parser = struct {
                 // Explicit key indicator
                 self.lexer.advanceChar(); // Skip '?'
                 try self.skipSpacesCheckTabs();
-                self.skipWhitespaceAndComments();
+                try self.skipWhitespaceAndCommentsInFlow();
                 key = try self.parseValue(0) orelse try self.createNullNode();
-                self.skipWhitespaceAndComments();
+                try self.skipWhitespaceAndCommentsInFlow();
             } else {
                 key = try self.parseValue(0) orelse return error.ExpectedKey;
             }
             
-            self.skipWhitespaceAndComments();
+            try self.skipWhitespaceAndCommentsInFlow();
             
             if (self.lexer.peek() != ':') {
                 return error.ExpectedColon;
             }
             self.lexer.advanceChar();
             
-            self.skipWhitespaceAndComments();
+            try self.skipWhitespaceAndCommentsInFlow();
             
             // Handle empty value before comma or closing brace
             var value: *ast.Node = undefined;
@@ -446,11 +486,11 @@ pub const Parser = struct {
             
             try node.data.mapping.pairs.append(.{ .key = key.?, .value = value });
             
-            self.skipWhitespaceAndComments();
+            try self.skipWhitespaceAndCommentsInFlow();
             
             if (self.lexer.peek() == ',') {
                 self.lexer.advanceChar();
-                self.skipWhitespaceAndComments();
+                try self.skipWhitespaceAndCommentsInFlow();
             }
         }
         
@@ -477,24 +517,37 @@ pub const Parser = struct {
             if (self.lexer.peek() == '-' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
                 self.lexer.advanceChar(); // Skip '-'
                 
-                // Special handling for tabs after dash
+                // Skip spaces after '-', but check for tabs used as indentation
+                if (self.lexer.peek() == ' ') {
+                    self.skipSpaces();
+                }
+                
+                // Now check what follows
                 if (self.lexer.peek() == '\t') {
-                    self.lexer.advanceChar(); // Skip tab
+                    // Look ahead to see if tab is being used as indentation
+                    var lookahead = self.lexer.pos + 1;
+                    while (lookahead < self.lexer.input.len and self.lexer.input[lookahead] == '\t') {
+                        lookahead += 1;
+                    }
                     
-                    // Check what follows the tab
-                    const after_tab = self.lexer.peek();
-                    
-                    // Check if it's another block sequence indicator
-                    if (after_tab == '-' and self.lexer.pos + 1 < self.lexer.input.len) {
-                        const after_dash = self.lexer.peekNext();
-                        // -\t- followed by space/tab/newline/eof is invalid
-                        if (after_dash == ' ' or after_dash == '\t' or after_dash == '\n' or after_dash == '\r' or after_dash == 0) {
+                    if (lookahead < self.lexer.input.len) {
+                        const after_tabs = self.lexer.input[lookahead];
+                        // Tab followed by a block indicator suggests tab as indentation
+                        // But we need to check if it's actually a block indicator, not part of a scalar
+                        if (after_tabs == '-' and lookahead + 1 < self.lexer.input.len) {
+                            const after_dash = self.lexer.input[lookahead + 1];
+                            // -\t- followed by space/tab/newline/eof = block sequence
+                            if (after_dash == ' ' or after_dash == '\t' or after_dash == '\n' or after_dash == '\r') {
+                                return error.TabsNotAllowed;
+                            }
+                        } else if (after_tabs == '-' and lookahead + 1 >= self.lexer.input.len) {
+                            // -\t- at end of input
+                            return error.TabsNotAllowed;
+                        } else if (after_tabs == '?' or after_tabs == ':') {
+                            // These are always indicators in this context
                             return error.TabsNotAllowed;
                         }
                     }
-                    // Otherwise continue normally (e.g., -\t-1 is valid)
-                } else {
-                    try self.skipSpacesCheckTabs();
                 }
                 
                 const item = try self.parseValue(current_indent + 1) orelse try self.createNullNode();
@@ -1049,6 +1102,35 @@ pub const Parser = struct {
     
     fn skipWhitespaceAndComments(self: *Parser) void {
         while (!self.lexer.isEOF()) {
+            if (Lexer.isWhitespace(self.lexer.peek())) {
+                self.lexer.skipWhitespace();
+            } else if (self.lexer.peek() == '#') {
+                self.lexer.skipToEndOfLine();
+                _ = self.lexer.skipLineBreak();
+            } else if (Lexer.isLineBreak(self.lexer.peek())) {
+                _ = self.lexer.skipLineBreak();
+            } else {
+                break;
+            }
+        }
+    }
+    
+    fn skipWhitespaceAndCommentsInFlow(self: *Parser) ParseError!void {
+        while (!self.lexer.isEOF()) {
+            // At start of line in flow context, tabs are not allowed as indentation
+            // But only if they're followed by content on the same line
+            if (self.lexer.column == 1 and self.lexer.peek() == '\t') {
+                // Look ahead to see if there's non-whitespace content on this line
+                var lookahead = self.lexer.pos + 1;
+                while (lookahead < self.lexer.input.len and (self.lexer.input[lookahead] == '\t' or self.lexer.input[lookahead] == ' ')) {
+                    lookahead += 1;
+                }
+                if (lookahead < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[lookahead])) {
+                    // Tab is being used as indentation before content
+                    return error.TabsNotAllowed;
+                }
+            }
+            
             if (Lexer.isWhitespace(self.lexer.peek())) {
                 self.lexer.skipWhitespace();
             } else if (self.lexer.peek() == '#') {
