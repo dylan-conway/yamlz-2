@@ -6,9 +6,9 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
 
 ## Current Implementation Status
 
-**Test Pass Rate**: 291/402 (72.4%)
+**Test Pass Rate**: 288/402 (71.6%)
 - Target: 394/402 (98%)
-- Gap: 103 tests
+- Gap: 106 tests
 
 ### Features Implemented
 1. **Core Parsing**:
@@ -24,7 +24,7 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
 
 2. **Complex Features**:
    - Empty keys and values in mappings
-   - Explicit key indicators (`?`)
+   - Explicit key indicators (`?`) - partial support
    - Mappings inside sequences
    - Special values (null, true/false, .inf, .nan)
    - YAML 1.1 boolean compatibility (yes/no, on/off, y/n)
@@ -32,8 +32,10 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
 3. **Recent Fixes**:
    - Flow sequence empty entry validation (CTN5)
    - Block scalar indicator validation (S4GJ, D83L)
-   - Tab validation in block sequences (Y79Y/004, Y79Y/010)
-   - Trailing comma support in flow sequences (UDR7)
+   - Tab validation in block sequences (Y79Y test suite - all passing)
+   - Trailing comma support in flow sequences
+   - Basic document directives (%YAML, %TAG)
+   - Block sequence/mapping indentation validation
 
 4. **Architecture**:
    - Clean separation: lexer.zig, ast.zig, parser.zig
@@ -42,50 +44,48 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
    - Test runner comparing against reference implementations
 
 ### Remaining Work to Reach 98%
-To close the 103-test gap, prioritize these high-impact areas:
+To close the 106-test gap, prioritize these high-impact areas:
 
-1. **Tab Validation** (~15 tests): Complete Y79Y test suite
-   - Tabs after explicit key indicator (?)
-   - Tabs after mapping value indicator (:)
-   - Tabs in flow contexts
-   - Tabs in literal/folded scalars
+1. **Tab Validation in Quoted Strings** (~10 tests): DK95 test suite
+   - Tabs at beginning of continuation lines in double-quoted strings
+   - Tabs that look like indentation should fail
 
-2. **Document Directives** (~10 tests): 
-   - %YAML version directives
-   - %TAG directives
-   - Invalid directive handling
+2. **Explicit Key Syntax** (~15-20 tests):
+   - Full support for `?` explicit key indicator
+   - Complex keys (sequences/mappings as keys)
+   - Empty keys: `{? : value}`
+   - Explicit key-value pairs in block mappings
 
-3. **Flow Mapping Issues** (~20 tests):
-   - Explicit key syntax (? key : value)
-   - Empty keys and values
-   - Complex nesting
-   - Colon in plain scalars (like :x)
-
-4. **Plain Scalar Edge Cases** (~15 tests):
-   - Multi-line implicit keys (HU3P)
+3. **Plain Scalar Edge Cases** (~15-20 tests):
+   - Multi-line implicit keys (HU3P) - plain scalars can't contain mappings
    - Comments interrupting scalars (8XDJ)
-   - Special characters at start
-   - Context-sensitive parsing
+   - Proper termination rules based on context
+   - `:` handling in flow contexts
 
-5. **Indentation Validation** (~20 tests):
-   - Inconsistent indentation detection
-   - Mixed indentation levels
-   - Zero indentation handling
+4. **Comment Validation** (~10-15 tests):
+   - Comments require whitespace before `#` (except at line start)
+   - Invalid comments like `"text#comment"`
 
-6. **String Escape Sequences** (~10 tests):
-   - Invalid escape sequences
-   - Unicode escapes
-   - Quote handling
+5. **Flow Collection Edge Cases** (~10-15 tests):
+   - Empty entry validation (no consecutive commas)
+   - Plain scalars starting with indicators (`:x`)
+   - Complex flow mappings
 
-7. **Special Values** (~10 tests):
-   - Additional null/boolean variations
-   - Number format validation
-   - Invalid special values
+6. **String Escape Sequences** (~5-10 tests):
+   - Invalid escape sequence validation
+   - `\'` not valid in double-quoted strings
+   - Only specific escapes allowed
+
+7. **Multi-document Support** (~5-10 tests):
+   - Handle multiple documents with `---` and `...`
+   - Directives only before first document
+   - Proper document separation
 
 ### Known Issues
-- Parser is too permissive in many cases (many "expected error, got success" failures)
+- Parser is too permissive (~63 tests "expected error, got success")
+- Missing key features (~51 tests "expected success, got error")
 - Need better error propagation for specific validation failures
-- Indentation tracking could be more robust
+- No support for multiple documents in a stream
 
 ## Important Resources
 

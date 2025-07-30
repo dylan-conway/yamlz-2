@@ -331,8 +331,7 @@ pub const Parser = struct {
         if (!self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek())) {
             var first_continuation_indent: ?usize = null;
             
-            // Debug
-            // std.debug.print("Checking for multi-line scalar at pos {}, initial_indent={}\n", .{self.lexer.pos, initial_indent});
+            // Debug - removed
             
             while (!self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek())) {
                 const line_break_pos = self.lexer.pos;
@@ -344,7 +343,23 @@ pub const Parser = struct {
                 
                 // Check if this line starts with a comment
                 if (self.lexer.peek() == '#') {
-                    // Skip the comment line and stop processing multiline scalar
+                    // Comment interrupts the plain scalar
+                    // Check if there's more content after the comment
+                    self.lexer.skipToEndOfLine();
+                    if (!self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek())) {
+                        self.lexer.advanceChar(); // Skip line break
+                        self.skipSpaces();
+                        const after_comment_indent = self.lexer.column;
+                        
+                        // If there's content after the comment at the same or less indentation
+                        // as the initial key, this creates an invalid multi-line implicit key
+                        if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and 
+                            after_comment_indent <= initial_indent) {
+                            return error.InvalidPlainScalar;
+                        }
+                    }
+                    
+                    // Restore position to before the comment
                     self.lexer.pos = line_break_pos;
                     break;
                 }
@@ -371,6 +386,7 @@ pub const Parser = struct {
                 while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
                     const ch = self.lexer.peek();
                     if (ch == '#' and self.lexer.input[self.lexer.pos - 1] == ' ') break;
+                    
                     
                     self.lexer.advanceChar();
                     if (!Lexer.isWhitespace(ch)) {
