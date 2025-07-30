@@ -27,6 +27,7 @@ pub const ParseError = error{
     DuplicateYamlDirective,
     UnsupportedYamlVersion,
     UnknownDirective,
+    UnterminatedQuotedString,
 };
 
 pub const Parser = struct {
@@ -568,6 +569,9 @@ pub const Parser = struct {
             const current_indent = self.getCurrentIndent();
             if (current_indent < min_indent) break;
             
+            // Check for tabs in indentation before processing
+            try self.checkIndentationForTabs();
+            
             // If this is not the first item, check that it's at the same indent
             if (sequence_indent) |seq_indent| {
                 if (current_indent != seq_indent) break;
@@ -636,6 +640,9 @@ pub const Parser = struct {
         while (!self.lexer.isEOF()) {
             const current_indent = self.getCurrentIndent();
             if (current_indent < min_indent) break;
+            
+            // Check for tabs in indentation before processing
+            try self.checkIndentationForTabs();
             
             // If this is not the first pair, check that it's at the same indent
             if (mapping_indent) |map_indent| {
@@ -708,7 +715,8 @@ pub const Parser = struct {
                 
                 try node.data.mapping.pairs.append(.{ .key = key, .value = value.? });
                 
-                if (!Lexer.isLineBreak(self.lexer.peek()) and !self.lexer.isEOF()) {
+                // Always skip to the next line after parsing a mapping pair
+                if (!self.lexer.isEOF()) {
                     self.skipToNextLine();
                 }
             } else {
@@ -755,12 +763,14 @@ pub const Parser = struct {
         self.lexer.advanceChar(); // Skip opening quote
         
         var result = std.ArrayList(u8).init(self.arena.allocator());
+        var found_closing_quote = false;
         
         while (!self.lexer.isEOF()) {
             const ch = self.lexer.peek();
             
             if (ch == '"') {
                 self.lexer.advanceChar();
+                found_closing_quote = true;
                 break;
             } else if (ch == '\\') {
                 self.lexer.advanceChar();
@@ -818,12 +828,92 @@ pub const Parser = struct {
                             return error.InvalidHexEscape;
                         }
                     },
+                    '\n' => {
+                        // Escaped newline - skip the newline and any following whitespace
+                        while (!self.lexer.isEOF() and (self.lexer.peek() == ' ' or self.lexer.peek() == '\t')) {
+                            self.lexer.advanceChar();
+                        }
+                    },
+                    '\r' => {
+                        // Escaped CRLF
+                        if (self.lexer.peek() == '\n') {
+                            self.lexer.advanceChar();
+                        }
+                        // Skip any following whitespace
+                        while (!self.lexer.isEOF() and (self.lexer.peek() == ' ' or self.lexer.peek() == '\t')) {
+                            self.lexer.advanceChar();
+                        }
+                    },
                     else => try result.append(escaped),
+                }
+            } else if (ch == '\n' or ch == '\r') {
+                // Handle line folding in double-quoted strings
+                self.lexer.advanceChar();
+                if (ch == '\r' and self.lexer.peek() == '\n') {
+                    self.lexer.advanceChar();
+                }
+                
+                // Check if the next line starts with a tab (which is not allowed as indentation)
+                const line_start_pos = self.lexer.pos;
+                var found_tab_at_start = false;
+                while (!self.lexer.isEOF() and (self.lexer.peek() == ' ' or self.lexer.peek() == '\t')) {
+                    if (self.lexer.pos == line_start_pos and self.lexer.peek() == '\t') {
+                        found_tab_at_start = true;
+                    }
+                    self.lexer.advanceChar();
+                }
+                
+                if (found_tab_at_start) {
+                    return error.TabsNotAllowed;
+                }
+                
+                // Reset to start of line and skip leading whitespace properly
+                self.lexer.pos = line_start_pos;
+                var has_content = false;
+                while (!self.lexer.isEOF()) {
+                    const next_ch = self.lexer.peek();
+                    if (next_ch == ' ' or next_ch == '\t') {
+                        self.lexer.advanceChar();
+                    } else if (next_ch == '\n' or next_ch == '\r') {
+                        // Empty line - append newline to result
+                        try result.append('\n');
+                        self.lexer.advanceChar();
+                        if (next_ch == '\r' and self.lexer.peek() == '\n') {
+                            self.lexer.advanceChar();
+                        }
+                    } else {
+                        has_content = true;
+                        break;
+                    }
+                }
+                
+                // If we have content after the newline, fold it into a space
+                if (has_content and result.items.len > 0) {
+                    try result.append(' ');
+                }
+            } else if (ch == ' ' or ch == '\t') {
+                // Handle trailing whitespace before newlines
+                const ws_start = self.lexer.pos;
+                while (!self.lexer.isEOF() and (self.lexer.peek() == ' ' or self.lexer.peek() == '\t')) {
+                    self.lexer.advanceChar();
+                }
+                
+                // If followed by newline, don't include the whitespace
+                if (!self.lexer.isEOF() and (self.lexer.peek() == '\n' or self.lexer.peek() == '\r')) {
+                    // Skip the whitespace
+                } else {
+                    // Include the whitespace
+                    const ws_end = self.lexer.pos;
+                    try result.appendSlice(self.lexer.input[ws_start..ws_end]);
                 }
             } else {
                 try result.append(ch);
                 self.lexer.advanceChar();
             }
+        }
+        
+        if (!found_closing_quote) {
+            return error.UnterminatedQuotedString;
         }
         
         const node = try self.arena.allocator().create(ast.Node);
@@ -1260,9 +1350,19 @@ pub const Parser = struct {
         self.lexer.column = 1;
         
         var indent: usize = 0;
-        while (self.lexer.pos < save_pos and self.lexer.peek() == ' ') {
-            indent += 1;
-            self.lexer.advanceChar();
+        while (self.lexer.pos < save_pos) {
+            const ch = self.lexer.peek();
+            if (ch == ' ') {
+                indent += 1;
+                self.lexer.advanceChar();
+            } else if (ch == '\t') {
+                // Tab found in indentation - this is not allowed in YAML
+                // We'll still count it to avoid infinite loops, but parsing will fail
+                indent += 1;
+                self.lexer.advanceChar();
+            } else {
+                break;
+            }
         }
         
         self.lexer.pos = save_pos;
@@ -1270,6 +1370,36 @@ pub const Parser = struct {
         self.lexer.column = save_column;
         
         return indent;
+    }
+    
+    fn checkIndentationForTabs(self: *Parser) ParseError!void {
+        const save_pos = self.lexer.pos;
+        const save_line = self.lexer.line;
+        const save_column = self.lexer.column;
+        
+        self.lexer.pos = self.lexer.line_start;
+        self.lexer.column = 1;
+        
+        // Check for tabs only in the leading whitespace (indentation)
+        while (self.lexer.pos < self.lexer.input.len) {
+            const ch = self.lexer.peek();
+            if (ch == ' ') {
+                self.lexer.advanceChar();
+            } else if (ch == '\t') {
+                // Found a tab in indentation
+                self.lexer.pos = save_pos;
+                self.lexer.line = save_line;
+                self.lexer.column = save_column;
+                return error.TabsNotAllowed;
+            } else {
+                // We've reached non-whitespace, stop checking
+                break;
+            }
+        }
+        
+        self.lexer.pos = save_pos;
+        self.lexer.line = save_line;
+        self.lexer.column = save_column;
     }
     
     fn isPlainScalarStart(_: *Parser, ch: u8) bool {
