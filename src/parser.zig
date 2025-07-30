@@ -307,10 +307,6 @@ pub const Parser = struct {
     }
     
     fn parsePlainScalar(self: *Parser) ParseError!*ast.Node {
-        return self.parsePlainScalarInternal(false);
-    }
-    
-    fn parsePlainScalarInternal(self: *Parser, is_mapping_value: bool) ParseError!*ast.Node {
         const start_pos = self.lexer.pos;
         var end_pos = start_pos;
         const initial_indent = self.lexer.column;
@@ -368,24 +364,6 @@ pub const Parser = struct {
                 // If this is the first continuation line, remember its indent
                 if (first_continuation_indent == null) {
                     first_continuation_indent = new_indent;
-                }
-                
-                // If we're parsing a mapping value, check for mapping indicators
-                // on continuation lines at the same indent level as the first line
-                if (is_mapping_value and first_continuation_indent != null and new_indent == initial_indent) {
-                    var check_pos = self.lexer.pos;
-                    while (check_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[check_pos])) {
-                        if (self.lexer.input[check_pos] == ':') {
-                            // Check if it's followed by space/newline/EOF
-                            if (check_pos + 1 >= self.lexer.input.len or
-                                self.lexer.input[check_pos + 1] == ' ' or
-                                Lexer.isLineBreak(self.lexer.input[check_pos + 1])) {
-                                // This is a mapping indicator - not allowed in plain scalar value
-                                return error.InvalidPlainScalar;
-                            }
-                        }
-                        check_pos += 1;
-                    }
                 }
                 
                 // This line is part of the scalar - consume it
@@ -584,9 +562,19 @@ pub const Parser = struct {
             .data = .{ .sequence = .{ .items = std.ArrayList(*ast.Node).init(self.arena.allocator()) } },
         };
         
+        var sequence_indent: ?usize = null;
+        
         while (!self.lexer.isEOF()) {
             const current_indent = self.getCurrentIndent();
             if (current_indent < min_indent) break;
+            
+            // If this is not the first item, check that it's at the same indent
+            if (sequence_indent) |seq_indent| {
+                if (current_indent != seq_indent) break;
+            } else {
+                // First item - remember its indent
+                sequence_indent = current_indent;
+            }
             
             if (self.lexer.peek() == '-' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
                 self.lexer.advanceChar(); // Skip '-'
@@ -643,9 +631,19 @@ pub const Parser = struct {
             .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.arena.allocator()) } },
         };
         
+        var mapping_indent: ?usize = null;
+        
         while (!self.lexer.isEOF()) {
             const current_indent = self.getCurrentIndent();
             if (current_indent < min_indent) break;
+            
+            // If this is not the first pair, check that it's at the same indent
+            if (mapping_indent) |map_indent| {
+                if (current_indent != map_indent) break;
+            } else {
+                // First pair - remember its indent
+                mapping_indent = current_indent;
+            }
             
             const key = try self.parsePlainScalar();
             self.skipSpaces();
