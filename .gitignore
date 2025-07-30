@@ -1,0 +1,8 @@
+.zig-cache
+zig-out
+zig
+.old
+yaml-test-suite
+yaml-ts
+yaml-rs
+yaml-rs-test
