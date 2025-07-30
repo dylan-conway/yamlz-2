@@ -824,9 +824,20 @@ pub const Parser = struct {
                     try result.append(' ');
                 }
                 
+                // Check if line contains only tabs (invalid)
+                var line_has_only_tabs = true;
+                const line_start = self.lexer.pos;
+                
                 while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
-                    try result.append(self.lexer.peek());
+                    const char = self.lexer.peek();
+                    if (char != '\t') line_has_only_tabs = false;
+                    try result.append(char);
                     self.lexer.advanceChar();
+                }
+                
+                // If the line had content and it was only tabs, that's an error
+                if (line_has_only_tabs and self.lexer.pos > line_start) {
+                    return error.TabsNotAllowed;
                 }
                 
                 trailing_breaks = 1;
@@ -984,9 +995,20 @@ pub const Parser = struct {
                     try result.append(' ');
                 }
                 
+                // Check if line contains only tabs (invalid)
+                var line_has_only_tabs = true;
+                const line_start = self.lexer.pos;
+                
                 while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
-                    try result.append(self.lexer.peek());
+                    const char = self.lexer.peek();
+                    if (char != '\t') line_has_only_tabs = false;
+                    try result.append(char);
                     self.lexer.advanceChar();
+                }
+                
+                // If the line had content and it was only tabs, that's an error
+                if (line_has_only_tabs and self.lexer.pos > line_start) {
+                    return error.TabsNotAllowed;
                 }
                 
                 trailing_breaks = 1;
