@@ -22,6 +22,7 @@ pub const ParseError = error{
     TabsNotAllowed,
     InvalidDocumentStart,
     InvalidDirective,
+    UnexpectedContent,
 };
 
 pub const Parser = struct {
@@ -238,6 +239,13 @@ pub const Parser = struct {
                 self.skipSpaces();
                 const new_indent = self.lexer.column;
                 
+                // Check if this line starts with a comment
+                if (self.lexer.peek() == '#') {
+                    // Skip the comment line and stop processing multiline scalar
+                    self.lexer.pos = line_break_pos;
+                    break;
+                }
+                
                 // Check what's on this line
                 if (self.lexer.isEOF() or Lexer.isLineBreak(self.lexer.peek())) {
                     // Empty line - continue
@@ -410,6 +418,7 @@ pub const Parser = struct {
             } else if (self.lexer.peek() == '?') {
                 // Explicit key indicator
                 self.lexer.advanceChar(); // Skip '?'
+                try self.skipSpacesCheckTabs();
                 self.skipWhitespaceAndComments();
                 key = try self.parseValue(0) orelse try self.createNullNode();
                 self.skipWhitespaceAndComments();
@@ -466,7 +475,7 @@ pub const Parser = struct {
             
             if (self.lexer.peek() == '-' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
                 self.lexer.advanceChar(); // Skip '-'
-                self.skipSpaces();
+                try self.skipSpacesCheckTabs();
                 
                 const item = try self.parseValue(current_indent + 1) orelse try self.createNullNode();
                 try node.data.sequence.items.append(item);
@@ -997,6 +1006,23 @@ pub const Parser = struct {
     fn skipWhitespaceAndComments(self: *Parser) void {
         while (!self.lexer.isEOF()) {
             if (Lexer.isWhitespace(self.lexer.peek())) {
+                self.lexer.skipWhitespace();
+            } else if (self.lexer.peek() == '#') {
+                self.lexer.skipToEndOfLine();
+                _ = self.lexer.skipLineBreak();
+            } else if (Lexer.isLineBreak(self.lexer.peek())) {
+                _ = self.lexer.skipLineBreak();
+            } else {
+                break;
+            }
+        }
+    }
+    
+    fn skipWhitespaceAndCommentsCheckTabs(self: *Parser) ParseError!void {
+        while (!self.lexer.isEOF()) {
+            if (self.lexer.peek() == '\t') {
+                return error.TabsNotAllowed;
+            } else if (Lexer.isWhitespace(self.lexer.peek())) {
                 self.lexer.skipWhitespace();
             } else if (self.lexer.peek() == '#') {
                 self.lexer.skipToEndOfLine();
