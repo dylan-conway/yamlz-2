@@ -90,11 +90,11 @@ To close the 103-test gap, prioritize these high-impact areas:
 ## Important Resources
 
 - **Zig Compiler**: Use `./zig/zig` for all compilation and execution
-- **YAML Spec (Compressed)**: Read `./yaml-spec-compressed.md` - This is a condensed version of the full spec and should be your primary reference
+- **YAML Spec (Compressed)**: Read `./yaml-spec-compressed.md` - This is a condensed version of the full spec and should be your primary reference. **Always load this into memory first** to reference production rules.
 - **Full YAML Spec**: Only consult `./yaml-spec.md` when you need specific details not found in the compressed version
-- **Reference Implementations**:
-  - TypeScript: `./yaml-ts/` - Well-structured recursive descent parser
-  - Rust: `./yaml-rs/` - Another implementation to reference
+- **Reference Implementations**: **CRITICAL - Study these implementations to understand root causes instead of fixing tests one by one**:
+  - TypeScript: `./yaml-ts/` - Well-structured recursive descent parser. Read the actual parsing logic to understand how they handle edge cases.
+  - Rust: `./yaml-rs/` - Another implementation to reference. Compare approaches between TypeScript and Rust.
 - **Test Suite**: `./yaml-test-suite/src/` - Official YAML test suite files
 
 ## Architecture Requirements
@@ -527,7 +527,14 @@ The yaml-test-suite no longer uses the old format with embedded YAML in test fil
 
 ## Development Workflow
 
-1. **Use Git for checkpoints**: The project is now under git version control. Make frequent commits as you implement features:
+1. **Study Reference Implementations First**: Before attempting to fix failing tests:
+   - Read the relevant parsing functions in `yaml-ts/` and `yaml-rs/`
+   - Understand HOW they handle the edge cases, not just WHAT they do
+   - Look for patterns in their validation logic
+   - Compare approaches between the two implementations
+   - This is much more efficient than fixing tests one by one
+
+2. **Use Git for checkpoints**: The project is now under git version control. Make frequent commits as you implement features:
    ```bash
    # After implementing a feature (e.g., plain scalars)
    git add -A
@@ -544,11 +551,10 @@ The yaml-test-suite no longer uses the old format with embedded YAML in test fil
    - Create branches for experimental features: `git checkout -b try-multiline-scalars`
    - See what changed: `git diff`
 
-2. Run tests frequently: `./zig/zig build test-yaml -- zig`
-3. Focus on one test at a time - use verbose mode to identify specific failures
-4. Use the reference implementations to understand behavior
-5. Read the compressed spec for grammar rules
-6. Only consult the full spec for specific edge cases
+3. Run tests frequently: `./zig/zig build test-yaml -- zig`
+4. When tests fail, study the reference implementations to understand the root cause
+5. Always have the compressed spec loaded in memory for production rule references
+6. Only consult the full spec for specific edge cases not covered in compressed version
 
 ## Common Pitfalls to Avoid
 
@@ -635,37 +641,40 @@ Remember: Start simple, test often, and incrementally add complexity. The recurs
 ## Iterative Development Strategy
 
 1. **Start with the test runner** ✅ - Already implemented with verbose mode support
-2. **Implement minimal parser** - Currently returns error for all inputs (23.4% baseline from expected-to-fail tests)
-3. **Commit your starting point**:
+2. **Implement minimal parser** ✅ - Currently at 72.4% (291/402 tests passing)
+3. **Study Reference Implementations** - **THIS IS CRITICAL**:
    ```bash
+   # When you see a pattern of failures (e.g., tab validation)
+   # 1. First read the compressed spec into memory
+   # 2. Then examine the reference implementations:
+   grep -r "tab\|Tab\|TAB\|\t" yaml-ts/src/
+   grep -r "tab\|Tab\|TAB\|\t" yaml-rs/src/
+   
+   # Study how they handle the specific case
+   # Look at their validation logic, not just the parsing
+   ```
+4. **Fix categories of bugs, not individual tests**:
+   - Group failing tests by root cause
+   - Study reference implementations for that category
+   - Implement the fix based on understanding the pattern
+   - This is much faster than fixing tests one by one
+5. **Use verbose mode to identify patterns**:
+   ```bash
+   ./zig/zig build test-yaml -- zig --verbose | grep "✗" | sort
+   ```
+6. **Commit after each category fix**:
+   ```bash
+   # After fixing a category (e.g., tab validation)
    git add -A
-   git commit -m "Initial project setup with test runner (23.4% baseline)"
+   git commit -m "Fix tab validation in flow contexts (78% tests passing)"
    ```
-4. **Pick simplest test cases** - Use verbose mode to find simple failing tests:
+7. **Debug by comparing implementations**:
    ```bash
-   ./zig/zig build test-yaml -- zig --verbose | grep "✗" | head -20
+   # When stuck on a test, run it through all parsers:
+   ./zig/zig build test-yaml -- typescript --verbose | grep "TEST_NAME"
+   ./zig/zig build test-yaml -- rust --verbose | grep "TEST_NAME"
+   ./zig/zig build test-yaml -- zig --verbose | grep "TEST_NAME"
    ```
-5. **Implement one feature at a time**:
-   - Plain scalars first (gets you ~10-15%)
-   - Simple sequences `[1, 2, 3]` 
-   - Simple mappings `{a: 1, b: 2}`
-   - Block sequences with `-`
-   - Block mappings with indentation
-   - Quoted strings
-   - And so on...
-6. **Commit after each feature**:
-   ```bash
-   # After implementing plain scalars
-   git add -A
-   git commit -m "Add plain scalar parsing (38% tests passing)"
-   ```
-7. **Run tests after each feature** - See the percentage climb
-8. **Debug with specific tests** - When a test fails, examine it:
-   ```bash
-   # Look at a specific failing test
-   cat yaml-test-suite/735Y/in.yaml
-   cat yaml-test-suite/735Y/===  # test description
-   ```
-9. **Don't worry about perfection** - Get to 98% first, then polish
+8. **Focus on high-impact categories** - Tab validation, flow mappings, and indentation issues affect many tests
 
-The beauty of this approach is you'll see constant progress and always know what to work on next (whatever test is failing). Git history will show your journey from 23.4% to 98%+.
+The key insight: Understanding WHY the reference implementations make certain choices (by reading their code) is much more valuable than just knowing WHAT they do. This transforms the problem from "fix 103 individual tests" to "fix ~10 categories of issues."
