@@ -34,6 +34,7 @@ pub const Parser = struct {
     lexer: Lexer,
     allocator: std.mem.Allocator,
     arena: std.heap.ArenaAllocator,
+    in_flow_context: bool = false,
     
     pub fn init(allocator: std.mem.Allocator, input: []const u8) Parser {
         return .{
@@ -280,7 +281,8 @@ pub const Parser = struct {
             const ch = self.lexer.peek();
             
             if (Lexer.isLineBreak(ch)) break;
-            if (ch == ':' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) break;
+            // In flow context, ':' can start a plain scalar value
+            if (!self.in_flow_context and ch == ':' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) break;
             if (ch == '#' and (self.lexer.pos == 0 or self.lexer.input[self.lexer.pos - 1] == ' ')) break;
             if (Lexer.isFlowIndicator(ch)) break;
             
@@ -403,6 +405,10 @@ pub const Parser = struct {
     
     fn parseFlowSequence(self: *Parser) ParseError!*ast.Node {
         self.lexer.advanceChar(); // Skip '['
+        const saved_flow_context = self.in_flow_context;
+        self.in_flow_context = true;
+        defer self.in_flow_context = saved_flow_context;
+        
         try self.skipWhitespaceAndCommentsInFlow();
         
         const node = try self.arena.allocator().create(ast.Node);
@@ -431,31 +437,51 @@ pub const Parser = struct {
                 continue;
             }
             
-            // Parse item
-            const item = try self.parseValue(0);
-            if (item) |value| {
+            // Check if this is a mapping with empty key
+            if (self.lexer.peek() == ':') {
+                // Empty key mapping
+                self.lexer.advanceChar(); // Skip ':'
                 try self.skipWhitespaceAndCommentsInFlow();
                 
-                // Check if this is a mapping key
-                if (self.lexer.peek() == ':') {
-                    // This is a single-pair mapping
-                    self.lexer.advanceChar(); // Skip ':'
+                const map_value = try self.parseValue(0) orelse try self.createNullNode();
+                
+                // Create a mapping with single pair (null key)
+                const map_node = try self.arena.allocator().create(ast.Node);
+                map_node.* = .{
+                    .type = .mapping,
+                    .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.arena.allocator()) } },
+                };
+                const null_key = try self.createNullNode();
+                try map_node.data.mapping.pairs.append(.{ .key = null_key, .value = map_value });
+                try node.data.sequence.items.append(map_node);
+                first_item = false;
+            } else {
+                // Parse item
+                const item = try self.parseValue(0);
+                if (item) |value| {
                     try self.skipWhitespaceAndCommentsInFlow();
                     
-                    const map_value = try self.parseValue(0) orelse try self.createNullNode();
-                    
-                    // Create a mapping with single pair
-                    const map_node = try self.arena.allocator().create(ast.Node);
-                    map_node.* = .{
-                        .type = .mapping,
-                        .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.arena.allocator()) } },
-                    };
-                    try map_node.data.mapping.pairs.append(.{ .key = value, .value = map_value });
-                    try node.data.sequence.items.append(map_node);
-                } else {
-                    try node.data.sequence.items.append(value);
+                    // Check if this is a mapping key
+                    if (self.lexer.peek() == ':') {
+                        // This is a single-pair mapping
+                        self.lexer.advanceChar(); // Skip ':'
+                        try self.skipWhitespaceAndCommentsInFlow();
+                        
+                        const map_value = try self.parseValue(0) orelse try self.createNullNode();
+                        
+                        // Create a mapping with single pair
+                        const map_node = try self.arena.allocator().create(ast.Node);
+                        map_node.* = .{
+                            .type = .mapping,
+                            .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.arena.allocator()) } },
+                        };
+                        try map_node.data.mapping.pairs.append(.{ .key = value, .value = map_value });
+                        try node.data.sequence.items.append(map_node);
+                    } else {
+                        try node.data.sequence.items.append(value);
+                    }
+                    first_item = false;
                 }
-                first_item = false;
             }
             
             try self.skipWhitespaceAndCommentsInFlow();
@@ -476,6 +502,10 @@ pub const Parser = struct {
     
     fn parseFlowMapping(self: *Parser) ParseError!*ast.Node {
         self.lexer.advanceChar(); // Skip '{'
+        const saved_flow_context = self.in_flow_context;
+        self.in_flow_context = true;
+        defer self.in_flow_context = saved_flow_context;
+        
         try self.skipWhitespaceAndCommentsInFlow();
         
         const node = try self.arena.allocator().create(ast.Node);
