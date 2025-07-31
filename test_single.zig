@@ -20,7 +20,7 @@ pub fn main() !void {
     std.debug.print("Input:\n{s}\n---\n", .{trimmed_input});
     
     const doc = p.parseDocument() catch |err| {
-        std.debug.print("Parse error: {s}\n", .{@errorName(err)});
+        std.debug.print("Parse error: {s} at line {} col {}\n", .{@errorName(err), p.lexer.line, p.lexer.column});
         return;
     };
     

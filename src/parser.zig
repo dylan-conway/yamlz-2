@@ -207,45 +207,8 @@ pub const Parser = struct {
             if (ch == '-' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
                 node = try self.parseBlockSequence(min_indent);
             } else if (ch == '?' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
-                // Explicit key indicator in block context
-                self.lexer.advanceChar(); // Skip '?'
-                try self.skipSpacesCheckTabs();
-                self.skipWhitespaceAndComments();
-                
-                // Parse the key
-                const key = try self.parseValue(min_indent) orelse try self.createNullNode();
-                
-                // Skip to next line and check for value
-                self.skipWhitespaceAndComments();
-                
-                // Look for the ':' on the same or next line
-                if (self.lexer.peek() == ':') {
-                    self.lexer.advanceChar();
-                    try self.skipSpacesCheckTabs();
-                    
-                    var value: ?*ast.Node = null;
-                    if (Lexer.isLineBreak(self.lexer.peek()) or self.lexer.isEOF()) {
-                        self.skipToNextLine();
-                        const value_indent = self.getCurrentIndent();
-                        if (value_indent > min_indent) {
-                            value = try self.parseValue(value_indent);
-                        }
-                    } else {
-                        value = try self.parseValue(min_indent);
-                    }
-                    
-                    // Create a mapping with single pair
-                    const map_node = try self.arena.allocator().create(ast.Node);
-                    map_node.* = .{
-                        .type = .mapping,
-                        .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.arena.allocator()) } },
-                    };
-                    try map_node.data.mapping.pairs.append(.{ .key = key, .value = value orelse try self.createNullNode() });
-                    node = map_node;
-                } else {
-                    // If no colon found, this is an error - explicit key requires value
-                    return error.ExpectedColon;
-                }
+                // Explicit key starts a block mapping
+                node = try self.parseBlockMapping(min_indent);
             } else if (self.isPlainScalarStart(ch)) {
                 const save_pos = self.lexer.pos;
                 const save_line = self.lexer.line;
@@ -668,14 +631,41 @@ pub const Parser = struct {
                 mapping_indent = current_indent;
             }
             
-            const key = try self.parsePlainScalar();
-            self.skipSpaces();
+            var key: ?*ast.Node = null;
             
-            if (self.lexer.peek() != ':') {
-                self.arena.allocator().destroy(key);
-                break;
+            // Check for explicit key indicator
+            if (self.lexer.peek() == '?' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or 
+                                               self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or 
+                                               self.lexer.peekNext() == 0)) {
+                // Explicit key
+                self.lexer.advanceChar(); // Skip '?'
+                try self.skipSpacesCheckTabs();
+                self.skipWhitespaceAndComments();
+                
+                // Parse the key
+                const key_indent = self.getCurrentIndent();
+                key = try self.parseValue(key_indent) orelse try self.createNullNode();
+                
+                // Skip to colon - it might be on a new line
+                self.skipWhitespaceAndComments();
+                
+                
+                // For explicit keys, the colon must be found
+                if (self.lexer.peek() != ':') {
+                    return error.ExpectedColon;
+                }
+                self.lexer.advanceChar();
+            } else {
+                // Implicit key
+                key = try self.parsePlainScalar();
+                self.skipSpaces();
+                
+                if (self.lexer.peek() != ':') {
+                    self.arena.allocator().destroy(key.?);
+                    break;
+                }
+                self.lexer.advanceChar();
             }
-            self.lexer.advanceChar();
             
             if (self.lexer.peek() == ' ' or Lexer.isLineBreak(self.lexer.peek())) {
                 try self.skipSpacesCheckTabs();
@@ -729,14 +719,16 @@ pub const Parser = struct {
                     value = try self.createNullNode();
                 }
                 
-                try node.data.mapping.pairs.append(.{ .key = key, .value = value.? });
+                try node.data.mapping.pairs.append(.{ .key = key.?, .value = value.? });
                 
                 // Always skip to the next line after parsing a mapping pair
                 if (!self.lexer.isEOF()) {
                     self.skipToNextLine();
                 }
             } else {
-                self.arena.allocator().destroy(key);
+                if (key) |k| {
+                    self.arena.allocator().destroy(k);
+                }
                 break;
             }
         }
