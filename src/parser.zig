@@ -652,6 +652,7 @@ pub const Parser = struct {
         var sequence_indent: ?usize = null;
         
         while (!self.lexer.isEOF()) {
+            
             const current_indent = self.getCurrentIndent();
             if (current_indent < min_indent) break;
             
@@ -697,6 +698,7 @@ pub const Parser = struct {
         var pending_explicit_key: ?*ast.Node = null;
         
         while (!self.lexer.isEOF()) {
+            
             const current_indent = self.getCurrentIndent();
             if (current_indent < min_indent) break;
             
@@ -1153,21 +1155,14 @@ pub const Parser = struct {
                     try result.append(' ');
                 }
                 
-                // Check if line contains only tabs (invalid)
-                var line_has_only_tabs = true;
-                const line_start = self.lexer.pos;
                 
                 while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
                     const char = self.lexer.peek();
-                    if (char != '\t') line_has_only_tabs = false;
                     try result.append(char);
                     self.lexer.advanceChar();
                 }
                 
-                // If the line had content and it was only tabs, that's an error
-                if (line_has_only_tabs and self.lexer.pos > line_start) {
-                    return error.TabsNotAllowed;
-                }
+                // Tabs on empty lines are allowed, so we don't check line_has_only_tabs anymore
                 
                 trailing_breaks = 1;
                 _ = self.lexer.skipLineBreak();
@@ -1324,21 +1319,14 @@ pub const Parser = struct {
                     try result.append(' ');
                 }
                 
-                // Check if line contains only tabs (invalid)
-                var line_has_only_tabs = true;
-                const line_start = self.lexer.pos;
                 
                 while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
                     const char = self.lexer.peek();
-                    if (char != '\t') line_has_only_tabs = false;
                     try result.append(char);
                     self.lexer.advanceChar();
                 }
                 
-                // If the line had content and it was only tabs, that's an error
-                if (line_has_only_tabs and self.lexer.pos > line_start) {
-                    return error.TabsNotAllowed;
-                }
+                // Tabs on empty lines are allowed, so we don't check line_has_only_tabs anymore
                 
                 trailing_breaks = 1;
                 _ = self.lexer.skipLineBreak();
@@ -1474,8 +1462,8 @@ pub const Parser = struct {
                 indent += 1;
                 self.lexer.advanceChar();
             } else if (ch == '\t') {
-                // Tab found in indentation - this is not allowed in YAML
-                // We'll still count it to avoid infinite loops, but parsing will fail
+                // Tab found in indentation
+                // Count it but note that this is typically not allowed
                 indent += 1;
                 self.lexer.advanceChar();
             } else {
@@ -1491,32 +1479,45 @@ pub const Parser = struct {
     }
     
     fn checkIndentationForTabs(self: *Parser) ParseError!void {
+        // Don't check tabs on whitespace-only lines or at EOF
+        if (self.lexer.isEOF() or Lexer.isLineBreak(self.lexer.peek())) {
+            return;
+        }
+        
         const save_pos = self.lexer.pos;
         const save_line = self.lexer.line;
         const save_column = self.lexer.column;
         
-        // Don't check empty lines or EOF
-        if (self.lexer.isEOF() or Lexer.isLineBreak(self.lexer.peek())) {
-            self.lexer.pos = save_pos;
-            self.lexer.line = save_line;
-            self.lexer.column = save_column;
-            return;
-        }
-        
         self.lexer.pos = self.lexer.line_start;
         self.lexer.column = 1;
         
-        // Check for tabs only in the leading whitespace (indentation)
+        // Check for tabs only in the leading whitespace (indentation) before content
         while (self.lexer.pos < self.lexer.input.len) {
             const ch = self.lexer.peek();
             if (ch == ' ') {
                 self.lexer.advanceChar();
             } else if (ch == '\t') {
-                // Found a tab in indentation
-                self.lexer.pos = save_pos;
-                self.lexer.line = save_line;
-                self.lexer.column = save_column;
-                return error.TabsNotAllowed;
+                // Check if there's any non-whitespace content after this tab on the same line
+                var has_content = false;
+                var check_pos = self.lexer.pos + 1;
+                while (check_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[check_pos])) {
+                    if (!Lexer.isWhitespace(self.lexer.input[check_pos])) {
+                        has_content = true;
+                        break;
+                    }
+                    check_pos += 1;
+                }
+                
+                if (has_content) {
+                    // Tab is used as indentation before content - not allowed
+                    self.lexer.pos = save_pos;
+                    self.lexer.line = save_line;
+                    self.lexer.column = save_column;
+                    return error.TabsNotAllowed;
+                }
+                
+                // Tab is on a whitespace-only portion, keep checking
+                self.lexer.advanceChar();
             } else {
                 // We've reached non-whitespace, stop checking
                 break;
