@@ -6,9 +6,9 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
 
 ## Current Implementation Status
 
-**Test Pass Rate**: 312/402 (77.6%)
+**Test Pass Rate**: 311/402 (77.4%)
 - Target: 394/402 (98%)
-- Gap: 82 tests
+- Gap: 83 tests
 
 ### Features Implemented
 1. **Core Parsing**:

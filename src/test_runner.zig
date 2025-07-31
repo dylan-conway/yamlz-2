@@ -200,7 +200,7 @@ fn runSingleTest(
     if (test_passed) {
         passing_tests.* += 1;
         if (verbose) {
-            std.debug.print("✓ {s}\n", .{test_name});
+            std.debug.print("✓ yaml-test-suite/{s}\n", .{test_name});
         } else {
             std.debug.print(".", .{});
         }
@@ -208,7 +208,7 @@ fn runSingleTest(
         if (verbose) {
             const expected = if (has_error_file) "error" else "success";
             const got = if (parse_success) "success" else "error";
-            std.debug.print("✗ {s} (expected {s}, got {s})\n", .{ test_name, expected, got });
+            std.debug.print("✗ yaml-test-suite/{s} (expected {s}, got {s})\n", .{ test_name, expected, got });
         } else {
             std.debug.print("F", .{});
         }

@@ -29,6 +29,7 @@ pub const ParseError = error{
     UnknownDirective,
     UnterminatedQuotedString,
     ExpectedCommaOrBrace,
+    ExpectedColonOrComma,
     DuplicateAnchor,
     InvalidComment,
 };
@@ -591,21 +592,23 @@ pub const Parser = struct {
             
             try self.skipWhitespaceAndCommentsInFlow();
             
-            if (self.lexer.peek() != ':') {
-                return error.ExpectedColon;
-            }
-            self.lexer.advanceChar();
-            
-            try self.skipWhitespaceAndCommentsInFlow();
-            
-            // std.debug.print("Debug: After parsing key and colon, pos={}, char='{}' (0x{x})\n", .{self.lexer.pos, self.lexer.peek(), self.lexer.peek()});
-            
-            // Handle empty value before comma or closing brace
+            // Handle implicit null values (key followed by comma or closing brace)
             var value: *ast.Node = undefined;
             if (self.lexer.peek() == ',' or self.lexer.peek() == '}') {
+                // Implicit null value
                 value = try self.createNullNode();
+            } else if (self.lexer.peek() == ':') {
+                // Explicit colon separator
+                self.lexer.advanceChar();
+                try self.skipWhitespaceAndCommentsInFlow();
+                
+                if (self.lexer.peek() == ',' or self.lexer.peek() == '}') {
+                    value = try self.createNullNode();
+                } else {
+                    value = try self.parseValue(0) orelse try self.createNullNode();
+                }
             } else {
-                value = try self.parseValue(0) orelse try self.createNullNode();
+                return error.ExpectedColonOrComma;
             }
             
             // std.debug.print("Debug: After parsing value, pos={}, char='{}' (0x{x})\n", .{self.lexer.pos, self.lexer.peek(), self.lexer.peek()});
@@ -718,6 +721,11 @@ pub const Parser = struct {
                     key = pkey;
                     pending_explicit_key = null;
                     self.lexer.advanceChar(); // Skip ':'
+                    
+                    // Check for tabs after colon
+                    if (self.lexer.peek() == '\t') {
+                        return error.TabsNotAllowed;
+                    }
                 } else {
                     // Expected colon after explicit key
                     return error.ExpectedColon;
@@ -757,6 +765,11 @@ pub const Parser = struct {
                         break;
                     }
                     self.lexer.advanceChar();
+                    
+                    // Check for tabs after colon
+                    if (self.lexer.peek() == '\t') {
+                        return error.TabsNotAllowed;
+                    }
                 }
             }
             
