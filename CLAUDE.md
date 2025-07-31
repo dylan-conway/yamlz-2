@@ -6,9 +6,9 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
 
 ## Current Implementation Status
 
-**Test Pass Rate**: 306/402 (76.1%)
+**Test Pass Rate**: 312/402 (77.6%)
 - Target: 394/402 (98%)
-- Gap: 88 tests
+- Gap: 82 tests
 
 ### Features Implemented
 1. **Core Parsing**:
@@ -39,6 +39,8 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
    - Improved plain scalar parsing in flow context (FRK4 now passing)
    - Fixed colon handling in plain scalars for flow context
    - Fixed flow context block mapping detection (58MP and +20 tests!)
+   - Added comment whitespace validation (9JBA and related)
+   - Support for YAML 1.1 in directives (MUS6/02-04)
 
 4. **Architecture**:
    - Clean separation: lexer.zig, ast.zig, parser.zig
@@ -47,7 +49,7 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
    - Test runner comparing against reference implementations
 
 ### Remaining Work to Reach 98%
-To close the 88-test gap, prioritize these high-impact areas:
+To close the 82-test gap, prioritize these high-impact areas:
 
 1. **Tab Validation in Quoted Strings** (~10 tests): DK95 test suite
    - Tabs at beginning of continuation lines in double-quoted strings

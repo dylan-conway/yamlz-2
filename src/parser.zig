@@ -30,6 +30,7 @@ pub const ParseError = error{
     UnterminatedQuotedString,
     ExpectedCommaOrBrace,
     DuplicateAnchor,
+    InvalidComment,
 };
 
 pub const Parser = struct {
@@ -37,6 +38,7 @@ pub const Parser = struct {
     allocator: std.mem.Allocator,
     arena: std.heap.ArenaAllocator,
     in_flow_context: bool = false,
+    has_yaml_directive: bool = false,
     
     pub fn init(allocator: std.mem.Allocator, input: []const u8) Parser {
         return .{
@@ -54,7 +56,6 @@ pub const Parser = struct {
         self.skipWhitespaceAndComments();
         
         // Parse directives
-        var has_yaml_directive = false;
         
         while (!self.lexer.isEOF()) {
             // Check for directive
@@ -69,21 +70,23 @@ pub const Parser = struct {
                 const directive_name = self.lexer.input[directive_start..self.lexer.pos];
                 
                 if (std.mem.eql(u8, directive_name, "YAML")) {
-                    if (has_yaml_directive) {
+                    if (self.has_yaml_directive) {
                         return error.DuplicateYamlDirective;
                     }
-                    has_yaml_directive = true;
+                    self.has_yaml_directive = true;
                     
-                    // Skip whitespace and parse version
-                    self.skipSpaces();
+                    // Skip whitespace (including tabs) and parse version
+                    while (!self.lexer.isEOF() and Lexer.isWhitespace(self.lexer.peek())) {
+                        self.lexer.advanceChar();
+                    }
                     const version_start = self.lexer.pos;
-                    while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
+                    while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and self.lexer.peek() != '#') {
                         self.lexer.advanceChar();
                     }
                     const version = std.mem.trim(u8, self.lexer.input[version_start..self.lexer.pos], " \t");
                     
-                    // We only support YAML 1.2
-                    if (!std.mem.eql(u8, version, "1.2")) {
+                    // Support both YAML 1.1 and 1.2
+                    if (!std.mem.eql(u8, version, "1.1") and !std.mem.eql(u8, version, "1.2")) {
                         return error.UnsupportedYamlVersion;
                     }
                 } else if (std.mem.eql(u8, directive_name, "TAG")) {
@@ -283,7 +286,7 @@ pub const Parser = struct {
         var end_pos = start_pos;
         const initial_indent = self.lexer.column;
         
-        // std.debug.print("Debug parsePlainScalar: start_pos={}, in_flow={}\n", .{start_pos, self.in_flow_context});
+        // std.debug.print("Debug parsePlainScalar: start_pos={}, initial_indent={}, in_flow={}\n", .{start_pos, initial_indent, self.in_flow_context});
         
         // First, consume the first line
         while (!self.lexer.isEOF()) {
@@ -364,10 +367,13 @@ pub const Parser = struct {
                 
                 // For continuation, line must be more indented than the key
                 if (new_indent <= initial_indent) {
+                    // std.debug.print("Debug plain scalar: Line at indent {} <= initial {}, stopping\n", .{new_indent, initial_indent});
                     // Not a continuation - restore position to before line break
                     self.lexer.pos = line_break_pos;
                     break;
                 }
+                
+                // std.debug.print("Debug plain scalar: Continuing line at indent {}\n", .{new_indent});
                 
                 // If this is the first continuation line, remember its indent
                 if (first_continuation_indent == null) {
@@ -375,6 +381,22 @@ pub const Parser = struct {
                 }
                 
                 // This line is part of the scalar - consume it
+                // But first check if this line contains a mapping indicator
+                // which would make this an invalid multi-line implicit key
+                var scan_pos = self.lexer.pos;
+                while (scan_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[scan_pos])) {
+                    if (self.lexer.input[scan_pos] == ':' and
+                        (scan_pos + 1 >= self.lexer.input.len or
+                         self.lexer.input[scan_pos + 1] == ' ' or
+                         Lexer.isLineBreak(self.lexer.input[scan_pos + 1]))) {
+                        // std.debug.print("Debug HU3P: Found ':' in continuation line, multiline implicit key error\n", .{});
+                        // This creates a multi-line implicit key
+                        return error.InvalidPlainScalar;
+                    }
+                    scan_pos += 1;
+                }
+                
+                // Now consume the line
                 while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
                     const ch = self.lexer.peek();
                     if (ch == '#' and self.lexer.input[self.lexer.pos - 1] == ' ') break;
@@ -514,6 +536,10 @@ pub const Parser = struct {
         
         if (self.lexer.peek() == ']') {
             self.lexer.advanceChar();
+            // Check for comment immediately after closing bracket
+            if (!self.lexer.isEOF() and self.lexer.peek() == '#') {
+                return error.InvalidComment;
+            }
         } else {
             return error.ExpectedCloseBracket;
         }
@@ -605,6 +631,10 @@ pub const Parser = struct {
         
         if (self.lexer.peek() == '}') {
             self.lexer.advanceChar();
+            // Check for comment immediately after closing brace
+            if (!self.lexer.isEOF() and self.lexer.peek() == '#') {
+                return error.InvalidComment;
+            }
         } else {
             return error.ExpectedCloseBrace;
         }
@@ -742,6 +772,12 @@ pub const Parser = struct {
                 } else {
                     value = try self.parseValue(current_indent);
                     
+                    // Debug output for HU3P
+                    // if (value != null and value.?.type == .scalar) {
+                    //     std.debug.print("Debug HU3P: Parsed value as scalar, style={}, value='{s}'\n", 
+                    //         .{value.?.data.scalar.style, value.?.data.scalar.value});
+                    // }
+                    
                     // After parsing a plain scalar value, check if the next line at the same
                     // indentation as the value contains a mapping indicator, which would
                     // create an invalid multi-line implicit key
@@ -751,6 +787,9 @@ pub const Parser = struct {
                         
                         if (!self.lexer.isEOF()) {
                             const next_line_indent = self.getCurrentIndent();
+                            // std.debug.print("Debug HU3P: next_line_indent={}, current_indent={}\n", 
+                            //     .{next_line_indent, current_indent});
+                            
                             // The value was parsed starting from after the spaces following the colon
                             // We need to check if the next line is at the same indentation as where
                             // the value started (which would be current_indent + some spaces)
@@ -759,11 +798,13 @@ pub const Parser = struct {
                             if (next_line_indent > current_indent) {
                                 // Check for mapping indicator
                                 var scan_pos = self.lexer.pos;
+                                // std.debug.print("Debug HU3P: Scanning for ':' starting at pos {}\n", .{scan_pos});
                                 while (scan_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[scan_pos])) {
                                     if (self.lexer.input[scan_pos] == ':' and
                                         (scan_pos + 1 >= self.lexer.input.len or
                                          self.lexer.input[scan_pos + 1] == ' ' or
                                          Lexer.isLineBreak(self.lexer.input[scan_pos + 1]))) {
+                                        // std.debug.print("Debug HU3P: Found ':' at pos {}, this is a multiline implicit key error!\n", .{scan_pos});
                                         // This creates a multi-line implicit key
                                         return error.InvalidPlainScalar;
                                     }
@@ -782,9 +823,13 @@ pub const Parser = struct {
                 
                 try node.data.mapping.pairs.append(.{ .key = key.?, .value = value.? });
                 
+                // std.debug.print("Debug HU3P: Added mapping pair, about to skip to next line\n", .{});
+                
                 // Always skip to the next line after parsing a mapping pair
                 if (!self.lexer.isEOF()) {
                     self.skipToNextLine();
+                    // std.debug.print("Debug HU3P: After skipToNextLine, pos={}, line={}, col={}\n", 
+                    //     .{self.lexer.pos, self.lexer.line, self.lexer.column});
                 }
             } else {
                 if (key) |k| {
@@ -1365,6 +1410,10 @@ pub const Parser = struct {
             if (Lexer.isWhitespace(self.lexer.peek())) {
                 self.lexer.skipWhitespace();
             } else if (self.lexer.peek() == '#') {
+                // Comments must be preceded by whitespace in flow contexts
+                if (self.lexer.pos > 0 and !Lexer.isWhitespace(self.lexer.input[self.lexer.pos - 1])) {
+                    return error.InvalidComment;
+                }
                 self.lexer.skipToEndOfLine();
                 _ = self.lexer.skipLineBreak();
             } else if (Lexer.isLineBreak(self.lexer.peek())) {
