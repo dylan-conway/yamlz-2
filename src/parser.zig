@@ -29,6 +29,7 @@ pub const ParseError = error{
     UnknownDirective,
     UnterminatedQuotedString,
     ExpectedCommaOrBrace,
+    DuplicateAnchor,
 };
 
 pub const Parser = struct {
@@ -212,47 +213,52 @@ pub const Parser = struct {
                 // Explicit key starts a block mapping
                 node = try self.parseBlockMapping(min_indent);
             } else if (self.isPlainScalarStart(ch)) {
-                const save_pos = self.lexer.pos;
-                const save_line = self.lexer.line;
-                const save_column = self.lexer.column;
-                
-                const scalar = try self.parsePlainScalar();
-                self.skipSpaces();
-                
-                if (self.lexer.peek() == ':' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
-                    self.lexer.pos = save_pos;
-                    self.lexer.line = save_line;
-                    self.lexer.column = save_column;
-                    self.arena.allocator().destroy(scalar);
-                    node = try self.parseBlockMapping(min_indent);
+                // In flow context, don't try to detect block mappings
+                if (self.in_flow_context) {
+                    node = try self.parsePlainScalar();
                 } else {
-                    node = scalar;
+                    const save_pos = self.lexer.pos;
+                    const save_line = self.lexer.line;
+                    const save_column = self.lexer.column;
                     
-                    // Check for multi-line implicit key situation in block context
-                    // This can happen even at root level (min_indent = 0)
-                    const saved_pos = self.lexer.pos;
-                    self.skipWhitespaceAndComments();
+                    const scalar = try self.parsePlainScalar();
+                    self.skipSpaces();
                     
-                    if (!self.lexer.isEOF()) {
-                        const next_indent = self.getCurrentIndent();
-                        // If next line is at same indent as this scalar
-                        if (next_indent == current_column) {
-                            // Check for mapping indicator
-                            var scan_pos = self.lexer.pos;
-                            while (scan_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[scan_pos])) {
-                                if (self.lexer.input[scan_pos] == ':' and
-                                    (scan_pos + 1 >= self.lexer.input.len or
-                                     self.lexer.input[scan_pos + 1] == ' ' or
-                                     Lexer.isLineBreak(self.lexer.input[scan_pos + 1]))) {
-                                    // Multi-line implicit key detected
-                                    return error.InvalidPlainScalar;
+                    if (self.lexer.peek() == ':' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
+                        self.lexer.pos = save_pos;
+                        self.lexer.line = save_line;
+                        self.lexer.column = save_column;
+                        self.arena.allocator().destroy(scalar);
+                        node = try self.parseBlockMapping(min_indent);
+                    } else {
+                        node = scalar;
+                        
+                        // Check for multi-line implicit key situation in block context
+                        // This can happen even at root level (min_indent = 0)
+                        const saved_pos = self.lexer.pos;
+                        self.skipWhitespaceAndComments();
+                        
+                        if (!self.lexer.isEOF()) {
+                            const next_indent = self.getCurrentIndent();
+                            // If next line is at same indent as this scalar
+                            if (next_indent == current_column) {
+                                // Check for mapping indicator
+                                var scan_pos = self.lexer.pos;
+                                while (scan_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[scan_pos])) {
+                                    if (self.lexer.input[scan_pos] == ':' and
+                                        (scan_pos + 1 >= self.lexer.input.len or
+                                         self.lexer.input[scan_pos + 1] == ' ' or
+                                         Lexer.isLineBreak(self.lexer.input[scan_pos + 1]))) {
+                                        // Multi-line implicit key detected
+                                        return error.InvalidPlainScalar;
+                                    }
+                                    scan_pos += 1;
                                 }
-                                scan_pos += 1;
                             }
                         }
+                        
+                        self.lexer.pos = saved_pos;
                     }
-                    
-                    self.lexer.pos = saved_pos;
                 }
             } else {
                 node = try self.parsePlainScalar();
