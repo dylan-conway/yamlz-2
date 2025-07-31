@@ -300,8 +300,16 @@ pub const Parser = struct {
                 const line_break_pos = self.lexer.pos;
                 self.lexer.advanceChar(); // Skip line break
                 
-                // Skip spaces on new line
-                self.skipSpaces();
+                // Skip spaces on new line - but track if we encounter tabs for indentation
+                var spaces_count: usize = 0;
+                while (self.lexer.peek() == ' ') {
+                    self.lexer.advanceChar();
+                    spaces_count += 1;
+                }
+                // Tabs used as indentation (before any content) are not allowed
+                if (self.lexer.peek() == '\t' and spaces_count == 0) {
+                    return error.TabsNotAllowed;
+                }
                 const new_indent = self.lexer.column;
                 
                 // Check if this line starts with a comment
@@ -548,9 +556,6 @@ pub const Parser = struct {
             const current_indent = self.getCurrentIndent();
             if (current_indent < min_indent) break;
             
-            // Check for tabs in indentation before processing
-            try self.checkIndentationForTabs();
-            
             // If this is not the first item, check that it's at the same indent
             if (sequence_indent) |seq_indent| {
                 if (current_indent != seq_indent) break;
@@ -560,39 +565,14 @@ pub const Parser = struct {
             }
             
             if (self.lexer.peek() == '-' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
+                // Before processing a new sequence item, check for tabs in its indentation
+                try self.checkIndentationForTabs();
+                
                 self.lexer.advanceChar(); // Skip '-'
                 
-                // Skip spaces after '-', but check for tabs used as indentation
+                // Skip spaces after '-'
                 if (self.lexer.peek() == ' ') {
                     self.skipSpaces();
-                }
-                
-                // Now check what follows
-                if (self.lexer.peek() == '\t') {
-                    // Look ahead to see if tab is being used as indentation
-                    var lookahead = self.lexer.pos + 1;
-                    while (lookahead < self.lexer.input.len and self.lexer.input[lookahead] == '\t') {
-                        lookahead += 1;
-                    }
-                    
-                    if (lookahead < self.lexer.input.len) {
-                        const after_tabs = self.lexer.input[lookahead];
-                        // Tab followed by a block indicator suggests tab as indentation
-                        // But we need to check if it's actually a block indicator, not part of a scalar
-                        if (after_tabs == '-' and lookahead + 1 < self.lexer.input.len) {
-                            const after_dash = self.lexer.input[lookahead + 1];
-                            // -\t- followed by space/tab/newline/eof = block sequence
-                            if (after_dash == ' ' or after_dash == '\t' or after_dash == '\n' or after_dash == '\r') {
-                                return error.TabsNotAllowed;
-                            }
-                        } else if (after_tabs == '-' and lookahead + 1 >= self.lexer.input.len) {
-                            // -\t- at end of input
-                            return error.TabsNotAllowed;
-                        } else if (after_tabs == '?' or after_tabs == ':') {
-                            // These are always indicators in this context
-                            return error.TabsNotAllowed;
-                        }
-                    }
                 }
                 
                 const item = try self.parseValue(current_indent + 1) orelse try self.createNullNode();
@@ -615,13 +595,11 @@ pub const Parser = struct {
         };
         
         var mapping_indent: ?usize = null;
+        var pending_explicit_key: ?*ast.Node = null;
         
         while (!self.lexer.isEOF()) {
             const current_indent = self.getCurrentIndent();
             if (current_indent < min_indent) break;
-            
-            // Check for tabs in indentation before processing
-            try self.checkIndentationForTabs();
             
             // If this is not the first pair, check that it's at the same indent
             if (mapping_indent) |map_indent| {
@@ -633,38 +611,52 @@ pub const Parser = struct {
             
             var key: ?*ast.Node = null;
             
-            // Check for explicit key indicator
-            if (self.lexer.peek() == '?' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or 
-                                               self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or 
-                                               self.lexer.peekNext() == 0)) {
-                // Explicit key
-                self.lexer.advanceChar(); // Skip '?'
-                try self.skipSpacesCheckTabs();
-                self.skipWhitespaceAndComments();
-                
-                // Parse the key
-                const key_indent = self.getCurrentIndent();
-                key = try self.parseValue(key_indent) orelse try self.createNullNode();
-                
-                // Skip to colon - it might be on a new line
-                self.skipWhitespaceAndComments();
-                
-                
-                // For explicit keys, the colon must be found
-                if (self.lexer.peek() != ':') {
+            // Check if we have a pending explicit key waiting for its colon
+            if (pending_explicit_key) |pkey| {
+                if (self.lexer.peek() == ':') {
+                    key = pkey;
+                    pending_explicit_key = null;
+                    self.lexer.advanceChar(); // Skip ':'
+                } else {
+                    // Expected colon after explicit key
                     return error.ExpectedColon;
                 }
-                self.lexer.advanceChar();
             } else {
-                // Implicit key
-                key = try self.parsePlainScalar();
-                self.skipSpaces();
+                // Before processing a new mapping pair, check for tabs in its indentation
+                try self.checkIndentationForTabs();
                 
-                if (self.lexer.peek() != ':') {
-                    self.arena.allocator().destroy(key.?);
-                    break;
+                // Check for explicit key indicator
+                if (self.lexer.peek() == '?' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or 
+                                                   self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or 
+                                                   self.lexer.peekNext() == 0)) {
+                    // Explicit key
+                    self.lexer.advanceChar(); // Skip '?'
+                    try self.skipSpacesCheckTabs();
+                    self.skipWhitespaceAndComments();
+                    
+                    // Parse the key
+                    const key_indent = self.getCurrentIndent();
+                    key = try self.parseValue(key_indent) orelse try self.createNullNode();
+                    
+                    // Skip to colon - it might be on a new line
+                    self.skipWhitespaceAndComments();
+                    
+                    
+                    // For explicit keys, the colon might be on the next line
+                    // Store the key and continue to find the colon
+                    pending_explicit_key = key;
+                    continue;
+                } else {
+                    // Implicit key
+                    key = try self.parsePlainScalar();
+                    self.skipSpaces();
+                    
+                    if (self.lexer.peek() != ':') {
+                        self.arena.allocator().destroy(key.?);
+                        break;
+                    }
+                    self.lexer.advanceChar();
                 }
-                self.lexer.advanceChar();
             }
             
             if (self.lexer.peek() == ' ' or Lexer.isLineBreak(self.lexer.peek())) {
@@ -1384,6 +1376,14 @@ pub const Parser = struct {
         const save_pos = self.lexer.pos;
         const save_line = self.lexer.line;
         const save_column = self.lexer.column;
+        
+        // Don't check empty lines or EOF
+        if (self.lexer.isEOF() or Lexer.isLineBreak(self.lexer.peek())) {
+            self.lexer.pos = save_pos;
+            self.lexer.line = save_line;
+            self.lexer.column = save_column;
+            return;
+        }
         
         self.lexer.pos = self.lexer.line_start;
         self.lexer.column = 1;
