@@ -28,6 +28,7 @@ pub const ParseError = error{
     UnsupportedYamlVersion,
     UnknownDirective,
     UnterminatedQuotedString,
+    ExpectedCommaOrBrace,
 };
 
 pub const Parser = struct {
@@ -276,15 +277,27 @@ pub const Parser = struct {
         var end_pos = start_pos;
         const initial_indent = self.lexer.column;
         
+        // std.debug.print("Debug parsePlainScalar: start_pos={}, in_flow={}\n", .{start_pos, self.in_flow_context});
+        
         // First, consume the first line
         while (!self.lexer.isEOF()) {
             const ch = self.lexer.peek();
             
             if (Lexer.isLineBreak(ch)) break;
-            // In flow context, ':' can start a plain scalar value
-            if (!self.in_flow_context and ch == ':' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) break;
+            
+            // Handle ':' - it ends the scalar in certain contexts
+            if (ch == ':') {
+                const next = self.lexer.peekNext();
+                // Break if: next is whitespace/newline/EOF OR (in flow context AND next is flow indicator)
+                if (Lexer.isWhitespace(next) or Lexer.isLineBreak(next) or next == 0 or 
+                    (self.in_flow_context and Lexer.isFlowIndicator(next))) {
+                    break;
+                }
+            }
+            
             if (ch == '#' and (self.lexer.pos == 0 or self.lexer.input[self.lexer.pos - 1] == ' ')) break;
-            if (Lexer.isFlowIndicator(ch)) break;
+            // In flow context, flow indicators end the scalar
+            if (self.in_flow_context and Lexer.isFlowIndicator(ch)) break;
             
             self.lexer.advanceChar();
             if (!Lexer.isWhitespace(ch)) {
@@ -370,6 +383,8 @@ pub const Parser = struct {
         }
         
         var value = self.lexer.input[start_pos..end_pos];
+        
+        // std.debug.print("Debug parsePlainScalar: parsed '{s}' from pos {} to {}\n", .{value, start_pos, end_pos});
         
         // Check for special values and convert to canonical form
         if (std.mem.eql(u8, value, "null") or std.mem.eql(u8, value, "Null") or std.mem.eql(u8, value, "NULL") or
@@ -515,9 +530,14 @@ pub const Parser = struct {
         };
         
         while (!self.lexer.isEOF() and self.lexer.peek() != '}') {
+            // std.debug.print("Debug: Flow mapping loop, pos={}, char='{}' (0x{x})\n", .{self.lexer.pos, self.lexer.peek(), self.lexer.peek()});
             if (self.lexer.peek() == ',') {
                 self.lexer.advanceChar();
                 try self.skipWhitespaceAndCommentsInFlow();
+                // Check for trailing comma
+                if (self.lexer.peek() == '}') {
+                    break;
+                }
                 continue;
             }
             
@@ -546,6 +566,8 @@ pub const Parser = struct {
             
             try self.skipWhitespaceAndCommentsInFlow();
             
+            // std.debug.print("Debug: After parsing key and colon, pos={}, char='{}' (0x{x})\n", .{self.lexer.pos, self.lexer.peek(), self.lexer.peek()});
+            
             // Handle empty value before comma or closing brace
             var value: *ast.Node = undefined;
             if (self.lexer.peek() == ',' or self.lexer.peek() == '}') {
@@ -554,13 +576,24 @@ pub const Parser = struct {
                 value = try self.parseValue(0) orelse try self.createNullNode();
             }
             
+            // std.debug.print("Debug: After parsing value, pos={}, char='{}' (0x{x})\n", .{self.lexer.pos, self.lexer.peek(), self.lexer.peek()});
+            
             try node.data.mapping.pairs.append(.{ .key = key.?, .value = value });
             
             try self.skipWhitespaceAndCommentsInFlow();
             
+            // Check if we've reached the end of the mapping
+            if (self.lexer.peek() == '}') {
+                // std.debug.print("Debug: Found closing brace, breaking\n", .{});
+                break;
+            }
+            
             if (self.lexer.peek() == ',') {
                 self.lexer.advanceChar();
                 try self.skipWhitespaceAndCommentsInFlow();
+            } else {
+                // No comma and not closing brace - error
+                return error.ExpectedCommaOrBrace;
             }
         }
         
