@@ -302,6 +302,14 @@ pub const Parser = struct {
             if (tag) |t| {
                 n.tag = t;
             }
+        } else {
+            // If we have anchor or tag but no node, that's an error
+            if (anchor != null) {
+                return error.InvalidAnchor;
+            }
+            if (tag != null) {
+                return error.InvalidTag;
+            }
         }
         
         return node;
