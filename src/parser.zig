@@ -44,6 +44,7 @@ pub const Parser = struct {
     parsing_explicit_key: bool = false,
     has_yaml_directive: bool = false,
     mapping_context_indent: ?usize = null,
+    parsing_block_sequence_entry: bool = false,
     
     pub fn init(allocator: std.mem.Allocator, input: []const u8) Parser {
         return .{
@@ -371,8 +372,10 @@ pub const Parser = struct {
         // Special check for invalid multiline implicit keys even when multiline is not allowed
         // This catches cases like HU3P where a plain scalar in a block mapping value
         // would contain mapping indicators on continuation lines
+        // But don't apply this check when parsing inside block sequence entries (like JQ4R)
         if (!allow_multiline and !self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek()) and 
-            self.mapping_context_indent != null and !self.parsing_explicit_key) {
+            self.mapping_context_indent != null and !self.parsing_explicit_key and 
+            !self.parsing_block_sequence_entry) {
             
             var temp_pos = self.lexer.pos;
             temp_pos += 1; // Skip line break
@@ -437,39 +440,8 @@ pub const Parser = struct {
                 
                 // Check if this line starts with a comment
                 if (self.lexer.peek() == '#') {
-                    // Comment interrupts the plain scalar
-                    // Look ahead to see if there's any content after the comment that could be a continuation
-                    var temp_pos = self.lexer.pos;
-                    
-                    // Skip to end of comment line
-                    while (temp_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[temp_pos])) {
-                        temp_pos += 1;
-                    }
-                    
-                    // Look for continuation lines after the comment
-                    while (temp_pos < self.lexer.input.len and Lexer.isLineBreak(self.lexer.input[temp_pos])) {
-                        temp_pos += 1; // Skip line break
-                        
-                        // Skip spaces to find indent
-                        const line_start = temp_pos;
-                        while (temp_pos < self.lexer.input.len and self.lexer.input[temp_pos] == ' ') {
-                            temp_pos += 1;
-                        }
-                        
-                        // Check if there's content on this line
-                        if (temp_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[temp_pos])) {
-                            const after_comment_indent = temp_pos - line_start;
-                            
-                            // If content is indented more than the mapping context, 
-                            // this would be a continuation after comment interruption - invalid
-                            if (after_comment_indent > context_indent) {
-                                return error.InvalidPlainScalar;
-                            }
-                            break; // Found content, stop checking
-                        }
-                    }
-                    
-                    // Restore position to before the comment
+                    // Comment after whitespace/newline interrupts the plain scalar
+                    // Restore position to before the line break and end the scalar
                     self.lexer.pos = line_break_pos;
                     break;
                 }
@@ -815,6 +787,11 @@ pub const Parser = struct {
                     }
                     self.lexer.advanceChar();
                 }
+                
+                // Set flag to indicate we're parsing a block sequence entry
+                const prev_parsing_block_sequence_entry = self.parsing_block_sequence_entry;
+                self.parsing_block_sequence_entry = true;
+                defer self.parsing_block_sequence_entry = prev_parsing_block_sequence_entry;
                 
                 const item = try self.parseValue(current_indent + 1) orelse try self.createNullNode();
                 try node.data.sequence.items.append(item);
@@ -1221,12 +1198,8 @@ pub const Parser = struct {
                     self.lexer.advanceChar();
                 }
                 
-                // Check for tabs at the start of continuation lines
-                // Tabs are not allowed as indentation at the beginning of continuation lines
-                if (!self.lexer.isEOF() and self.lexer.peek() == '\t') {
-                    // This is a tab at the start of a continuation line - not allowed
-                    return error.TabsNotAllowed;
-                }
+                // Note: Tabs are allowed as indentation in continuation lines of double-quoted strings
+                // per YAML spec s-flow-line-prefix(n) which includes s-indent(n)
                 
                 // Skip leading whitespace on continuation lines (but preserve it as content)
                 var has_content = false;
