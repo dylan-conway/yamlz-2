@@ -363,11 +363,13 @@ pub const Parser = struct {
             }
         }
         
+        
         // Now handle potential multi-line scalars
         // In flow context or when parsing explicit keys, be more permissive with multiline
         // In block mapping values, be more conservative
-        const allow_multiline = self.in_flow_context or self.parsing_explicit_key or 
-                                (self.mapping_context_indent == null);
+        // Update: Explicit keys should NOT allow multiline - they end at line boundaries
+        const allow_multiline = self.in_flow_context and !self.parsing_explicit_key or 
+                                (self.mapping_context_indent == null and !self.parsing_explicit_key);
         
         // Special check for invalid multiline implicit keys even when multiline is not allowed
         // This catches cases like HU3P where a plain scalar in a block mapping value
@@ -410,10 +412,23 @@ pub const Parser = struct {
             }
         }
         
+        
         if (!self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek()) and allow_multiline) {
             var first_continuation_indent: ?usize = null;
+            var comment_interrupted_previous_line = false;
             
-            // Debug - removed
+            // Check if the current line ends with a comment (before the line break)
+            if (self.lexer.pos > 0) {
+                var check_pos = self.lexer.pos - 1;
+                // Skip back past any trailing whitespace
+                while (check_pos > 0 and Lexer.isWhitespace(self.lexer.input[check_pos])) {
+                    check_pos -= 1;
+                }
+                // Check if we ended due to a comment
+                if (check_pos > 0 and self.lexer.input[check_pos] == '#') {
+                    comment_interrupted_previous_line = true;
+                }
+            }
             
             while (!self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek())) {
                 const line_break_pos = self.lexer.pos;
@@ -452,11 +467,17 @@ pub const Parser = struct {
                     continue;
                 }
                 
+                
                 // For continuation, line must be more indented than the mapping context
                 if (new_indent <= context_indent) {
                     // Not a continuation - restore position to before line break
                     self.lexer.pos = line_break_pos;
                     break;
+                }
+                
+                // If a comment interrupted the previous line, continuation is invalid
+                if (comment_interrupted_previous_line) {
+                    return error.InvalidPlainScalar;
                 }
                 
                 // Check if this continuation line contains a mapping indicator that would
@@ -488,7 +509,14 @@ pub const Parser = struct {
                 // Now consume the line
                 while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
                     const ch = self.lexer.peek();
-                    if (ch == '#' and self.lexer.input[self.lexer.pos - 1] == ' ') break;
+                    if (ch == '#' and self.lexer.input[self.lexer.pos - 1] == ' ') {
+                        comment_interrupted_previous_line = true;
+                        // Skip to end of line
+                        while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
+                            self.lexer.advanceChar();
+                        }
+                        break;
+                    }
                     
                     
                     self.lexer.advanceChar();
@@ -844,6 +872,9 @@ pub const Parser = struct {
                     mapping_indent = current_indent;
                 }
             
+                // Skip whitespace and comments before looking for the colon
+                self.skipWhitespaceAndComments();
+                
                 if (self.lexer.peek() == ':') {
                     key = pkey;
                     pending_explicit_key = null;
@@ -854,8 +885,25 @@ pub const Parser = struct {
                         return error.TabsNotAllowed;
                     }
                 } else {
-                    // Expected colon after explicit key
-                    return error.ExpectedColon;
+                    // No colon found after explicit key - this means the key has no value (null)
+                    key = pkey;
+                    pending_explicit_key = null;
+                    
+                    // Create a null node for the value
+                    const null_node = try self.arena.allocator().create(ast.Node);
+                    null_node.* = ast.Node{
+                        .type = .scalar,
+                        .start_line = self.lexer.line,
+                        .start_column = self.lexer.column,
+                        .data = .{ .scalar = .{ .value = "null", .style = .plain } },
+                    };
+                    
+                    // Add the key-value pair immediately
+                    try node.data.mapping.pairs.append(.{ .key = key.?, .value = null_node });
+                    key = null; // Reset key to avoid double-processing
+                    
+                    // Continue to parse the next item without consuming any input
+                    continue;
                 }
             } else {
                 if (current_indent < min_indent) {
@@ -883,18 +931,13 @@ pub const Parser = struct {
                     try self.skipSpacesCheckTabs();
                     self.skipWhitespaceAndComments();
                     
-                    // Parse the key - for explicit keys, parse the full value (including collections)
-                    // But prevent parseValue from auto-detecting block mappings by setting flow context
-                    const key_indent = self.getCurrentIndent();
-                    const prev_flow_context = self.in_flow_context;
+                    // Parse the key - for explicit keys, typically parse as plain scalar
+                    // Explicit keys can be complex, but in most cases they're plain scalars
                     const prev_explicit_key = self.parsing_explicit_key;
-                    self.in_flow_context = true; // Force scalar parsing, not mapping detection
                     self.parsing_explicit_key = true; // Disable multiline mapping validation
-                    defer {
-                        self.in_flow_context = prev_flow_context;
-                        self.parsing_explicit_key = prev_explicit_key;
-                    }
-                    key = try self.parseValue(key_indent) orelse try self.createNullNode();
+                    defer self.parsing_explicit_key = prev_explicit_key;
+                    
+                    key = try self.parsePlainScalar();
                     
                     // For explicit keys, the mapping colon can be:
                     // 1. On the same line after spaces: "? key : value"
@@ -925,12 +968,28 @@ pub const Parser = struct {
                         }
                     } else {
                         // The colon is not a proper mapping colon, or mapping colon is on next line
-                        // Skip any remaining content on this line and store the key for the next iteration
+                        // Skip any remaining content on this line and move to next line
                         
-                        // Skip to end of current line and move to next line
+                        // Skip to end of current line
                         while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
                             self.lexer.advanceChar();
                         }
+                        
+                        // If we're at EOF, this explicit key has no value - create null value immediately
+                        if (self.lexer.isEOF()) {
+                            const null_node = try self.arena.allocator().create(ast.Node);
+                            null_node.* = ast.Node{
+                                .type = .scalar,
+                                .start_line = self.lexer.line,
+                                .start_column = self.lexer.column,
+                                .data = .{ .scalar = .{ .value = "null", .style = .plain } },
+                            };
+                            
+                            // Add the key-value pair immediately
+                            try node.data.mapping.pairs.append(.{ .key = key.?, .value = null_node });
+                            break; // Exit the loop
+                        }
+                        
                         // Skip the newline as well
                         if (!self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek())) {
                             self.lexer.advanceChar();
@@ -1678,8 +1737,9 @@ pub const Parser = struct {
             if (Lexer.isWhitespace(self.lexer.peek())) {
                 self.lexer.skipWhitespace();
             } else if (self.lexer.peek() == '#') {
-                // Comments must be preceded by whitespace in flow contexts
-                if (self.lexer.pos > 0 and !Lexer.isWhitespace(self.lexer.input[self.lexer.pos - 1])) {
+                // Comments must be preceded by whitespace in flow contexts, or be at start of line
+                if (self.lexer.pos > 0 and !Lexer.isWhitespace(self.lexer.input[self.lexer.pos - 1]) and 
+                    !Lexer.isLineBreak(self.lexer.input[self.lexer.pos - 1])) {
                     return error.InvalidComment;
                 }
                 self.lexer.skipToEndOfLine();
