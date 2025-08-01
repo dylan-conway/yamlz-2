@@ -34,6 +34,7 @@ pub const ParseError = error{
     DuplicateAnchor,
     InvalidComment,
     InvalidDocumentMarker,
+    InvalidNestedMapping,
 };
 
 pub const Parser = struct {
@@ -45,6 +46,7 @@ pub const Parser = struct {
     has_yaml_directive: bool = false,
     mapping_context_indent: ?usize = null,
     parsing_block_sequence_entry: bool = false,
+    has_document_content: bool = false,
     
     pub fn init(allocator: std.mem.Allocator, input: []const u8) Parser {
         return .{
@@ -66,6 +68,10 @@ pub const Parser = struct {
         while (!self.lexer.isEOF()) {
             // Check for directive
             if (self.lexer.peek() == '%') {
+                // Directives are not allowed after document content
+                if (self.has_document_content) {
+                    return error.DirectiveAfterContent;
+                }
                 self.lexer.advanceChar(); // Skip '%'
                 
                 // Parse directive name
@@ -137,7 +143,10 @@ pub const Parser = struct {
             }
         }
         
-        const root = if (self.lexer.isEOF()) null else try self.parseValue(0);
+        const root = if (self.lexer.isEOF()) null else blk: {
+            self.has_document_content = true;
+            break :blk try self.parseValue(0);
+        };
         
         return ast.Document{
             .root = root,
@@ -809,7 +818,6 @@ pub const Parser = struct {
         var sequence_indent: ?usize = null;
         
         while (!self.lexer.isEOF()) {
-            
             const current_indent = self.getCurrentIndent();
             if (current_indent < min_indent) break;
             
@@ -864,6 +872,15 @@ pub const Parser = struct {
                 
                 self.skipToNextLine();
             } else {
+                // Check if there's content at this indentation level that should be parsed
+                // but isn't a valid sequence item (missing '-' prefix)
+                if (current_indent == (sequence_indent orelse min_indent)) {
+                    const ch = self.lexer.peek();
+                    // If we see an anchor (&) or tag (!) at sequence indentation without '-', it's an error
+                    if (ch == '&' or ch == '!') {
+                        return error.InvalidAnchor;
+                    }
+                }
                 break;
             }
         }
@@ -1068,17 +1085,18 @@ pub const Parser = struct {
                 } else {
                     value = try self.parseValue(current_indent);
                     
+                    // After parsing any value in a mapping, check for invalid nested mapping syntax
+                    // like "a: 'b': c" which should be an error
+                    const saved_pos = self.lexer.pos;
+                    self.skipSpaces(); // Skip spaces but not newlines
                     
-                    // After parsing a plain scalar value, check if the next line at the same
-                    // indentation as the value contains a mapping indicator, which would
-                    // create an invalid multi-line implicit key
-                    if (value != null and value.?.type == .scalar and value.?.data.scalar.style == .plain) {
-                        const saved_pos = self.lexer.pos;
-                        self.skipWhitespaceAndComments();
-                        
-                        
-                        self.lexer.pos = saved_pos;
+                    // If we find a ':' immediately after the value on the same line,
+                    // this creates invalid nested mapping syntax
+                    if (self.lexer.peek() == ':' and !Lexer.isLineBreak(self.lexer.peekAt(self.lexer.pos - 1))) {
+                        return error.InvalidNestedMapping;
                     }
+                    
+                    self.lexer.pos = saved_pos;
                 }
                 
                 if (value == null) {
@@ -1295,30 +1313,40 @@ pub const Parser = struct {
                     self.lexer.advanceChar();
                 }
                 
-                // Note: Tabs are allowed as indentation in continuation lines of double-quoted strings
-                // per YAML spec s-flow-line-prefix(n) which includes s-indent(n)
+                // For multiline double-quoted strings, continuation lines must have proper indentation
+                // Calculate current indentation level for validation
+                var continuation_indent: usize = 0;
+                const whitespace_start = self.lexer.pos;
                 
-                // Skip leading whitespace on continuation lines (but preserve it as content)
-                var has_content = false;
+                // Count the indentation on the continuation line
                 while (!self.lexer.isEOF()) {
                     const next_ch = self.lexer.peek();
                     if (next_ch == ' ' or next_ch == '\t') {
+                        continuation_indent += 1;
                         self.lexer.advanceChar();
                     } else if (next_ch == '\n' or next_ch == '\r') {
-                        // Empty line - append newline to result
+                        // Empty line - skip and continue
                         try result.append('\n');
                         self.lexer.advanceChar();
                         if (next_ch == '\r' and self.lexer.peek() == '\n') {
                             self.lexer.advanceChar();
                         }
+                        continuation_indent = 0; // Reset for next line
                     } else {
-                        has_content = true;
+                        // Found content - validate indentation
+                        // For multiline double-quoted strings in flow contexts, continuation lines must have proper indentation.
+                        // In block contexts, zero indentation is generally allowed for document-level scalars.
+                        if (self.in_flow_context and continuation_indent == 0 and next_ch != '"') {
+                            // This is an unindented continuation line in flow context with content other than closing quote
+                            // This violates YAML spec for multiline double-quoted strings in flow contexts
+                            return error.InvalidIndentation;
+                        }
                         break;
                     }
                 }
                 
                 // If we have content after the newline, fold it into a space
-                if (has_content and result.items.len > 0) {
+                if (self.lexer.pos > whitespace_start and result.items.len > 0) {
                     try result.append(' ');
                 }
             } else if (ch == ' ' or ch == '\t') {
@@ -1976,6 +2004,9 @@ pub const Parser = struct {
             var document = ast.Document{
                 .allocator = self.arena.allocator(),
             };
+            
+            // Reset document content flag for each document
+            self.has_document_content = false;
             
             // Parse directives if this is an explicit document
             if (has_explicit_start) {
