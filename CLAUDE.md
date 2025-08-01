@@ -6,9 +6,9 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
 
 ## Current Implementation Status
 
-**Test Pass Rate**: 327/402 (81.3%)
+**Test Pass Rate**: 328/402 (81.6%)
 - Target: 394/402 (98%)
-- Gap: 67 tests
+- Gap: 66 tests
 
 ### Features Implemented
 1. **Core Parsing**:
@@ -55,38 +55,50 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
    - Test runner comparing against reference implementations
 
 ### Remaining Work to Reach 98%
-To close the 67-test gap, prioritize these high-impact areas:
+**Gap Analysis Complete**: To close the 66-test gap, focus on these validated categories:
 
-1. **Flow Collection Edge Cases** (~10-15 tests): 🚧 **IN PROGRESS**
-   - Empty entry validation (no consecutive commas)
-   - Plain scalars starting with indicators (`:x`)
-   - Complex flow mappings with edge cases
+**🎯 NEXT PRIORITY: Indentation Validation** (~20-25 tests) 
+⭐ **START HERE** - Highest impact, clearest rules from spec
+- **ZVH3**: Wrong indented sequence items (`- key: value\n - item1` - second item at wrong indent)
+- **QB6E**: Wrong indented multiline quoted scalars (continuation lines must be properly indented)
+- **236B**: Invalid value after mapping (`foo:\n  bar\ninvalid` - unindented content after mapping value)
+- **GT5M**: Floating anchors without values (`- item1\n&node\n- item2`)
+- **H7J7**: Node anchor not indented properly (`key: &x\n!!map\n  a: b`)
 
-2. **Plain Scalar Comment Interruption** (~10-15 tests):
-   - Comments interrupting multiline scalars (BF9H, 8XDJ)
-   - These are complex edge cases that even reference implementations struggle with
-   - May require significant multiline parsing logic changes
+**Implementation Strategy**:
+1. Study `parseBlockSequence()` and `parseBlockMapping()` indentation logic
+2. Add validation for consistent indentation at sequence/mapping boundaries
+3. Validate continuation line indentation in multiline constructs
+4. Fix anchor placement validation (anchors must be attached to values)
 
-3. **String Escape Sequences** (~5-10 tests):
-   - Invalid escape sequence validation
-   - `\'` not valid in double-quoted strings
-   - Only specific escapes allowed
+**🔧 NEXT: Flow Collection Validation** (~10-15 tests)
+- **ZL4Z**: Invalid nested mapping (`a: 'b': c` - nested mapping syntax error)
+- **JKF3**: Multiline unindented double quoted block key (not allowed in flow context)
+- Add stricter syntax validation for flow collections
+- Validate proper flow mapping/sequence nesting rules
 
-4. **Permissive Parser Issues** (~20-30 tests):
-   - Many "expected error, got success" cases where parser is too lenient
-   - Need stricter validation for edge cases
-   - Requires careful analysis to avoid breaking valid cases
+**⚠️ MEDIUM: Document Structure** (~10-15 tests)
+- **RHX7**: YAML directive without document end marker (directives after content)
+- Add validation for directive placement rules
+- Improve document boundary handling
 
-5. **Missing Success Cases** (~10-15 tests):
-   - "expected success, got error" cases
-   - Usually complex valid YAML that current parser rejects
-   - Often involves intricate indentation or flow/block mixing
+**🔍 COMPLEX: Plain Scalar Comment Interruption** (~10-15 tests) 
+⚠️ **SAVE FOR LATER** - Complex multiline parsing edge cases
+- **8XDJ**: Comment interrupting plain scalar continuation (`key: word1\n#  xxx\n  word2`)
+- **BF9H**: Similar comment interruption patterns
+- Requires significant changes to multiline scalar parsing logic
 
-### Current Analysis (81.3% Pass Rate)
-- **Too Permissive**: ~45 tests "expected error, got success" - Parser accepts invalid YAML
-- **Too Restrictive**: ~30 tests "expected success, got error" - Parser rejects valid YAML  
-- **Major Gaps Closed**: Explicit keys, multi-document support, flow comments, tab validation
-- **Focus Areas**: Flow collection edge cases, escape sequences, permissive validation
+**📊 TRACKING**: 
+- Current: 328/402 (81.6%)
+- With indentation fixes: ~348/402 (86.6%)
+- With flow validation: ~358/402 (89.1%)
+- Target: 394/402 (98%)
+
+### Validation Gap Categories (81.6% Pass Rate)
+- **Too Permissive**: ~50 tests "expected error, got success" - Parser accepts invalid YAML
+- **Too Restrictive**: ~16 tests "expected success, got error" - Parser rejects valid YAML  
+- **Analysis Complete**: Detailed failing test categorization and prioritization done
+- **Architecture Ready**: Parser has solid validation framework, ready for systematic improvements
 
 ## Important Resources
 
@@ -293,40 +305,67 @@ The test suite is in `yaml-test-suite/` with each test in its own directory:
 
 ## Development Strategy for Reaching 98%
 
-**Current Status: 327/402 (81.3%) → Target: 394/402 (98%)**
+**Current Status: 328/402 (81.6%) → Target: 394/402 (98%)**
 
-### Priority Approach
+### IMMEDIATE NEXT STEPS
 
-1. **Focus on Flow Collection Edge Cases** 🚧 IN PROGRESS
-   - Continue fixing issues like empty entries, complex flow mappings
-   - These typically have clear spec rules and reference implementations
+**🎯 START HERE: Indentation Validation Implementation**
 
-2. **Address Permissive Parser Issues** 
-   - ~45 "expected error, got success" tests
-   - Use reference implementations to understand what should fail
-   - Add targeted validation without breaking existing functionality
+1. **Fix Block Sequence Indentation** (src/parser.zig:794-850)
+   ```bash
+   # Test these specific failing cases:
+   ./zig/zig build test-yaml -- zig --verbose | grep "ZVH3\|GT5M\|236B"
+   ```
+   - **ZVH3**: Add validation in `parseBlockSequence()` that all `-` indicators are at same indent
+   - **GT5M**: Validate anchors are attached to actual values, not floating
+   - Implement stricter indentation consistency checks
 
-3. **Fix Restrictive Parser Issues**
-   - ~30 "expected success, got error" tests  
-   - Usually complex but valid YAML constructs
-   - Study TypeScript parser (94.8% baseline) for guidance
+2. **Fix Multiline String Indentation** (src/parser.zig:1132-1300)
+   - **QB6E**: Add validation for proper continuation line indentation in double-quoted strings
+   - Study continuation line rules in yaml-spec-compressed.md
+   - Ensure multiline strings follow indentation requirements
 
-### Debugging Workflow
+3. **Fix Block Mapping Structure** (src/parser.zig:875-1100) 
+   - **236B**: Add validation that content after mapping values is properly structured
+   - Validate that unindented content after mapping value is invalid
+   - **H7J7**: Fix anchor placement validation
+
+**Expected Impact**: 20-25 tests → ~348/402 (86.6%)
+
+### Debugging Workflow for Indentation Issues
 
 ```bash
-# Identify failure patterns
-./zig/zig build test-yaml -- zig --verbose | grep "✗" | sort
+# Test specific indentation failures
+./zig/zig build test-yaml -- zig --verbose | grep "ZVH3\|QB6E\|236B\|GT5M\|H7J7"
 
-# Compare against reference implementations  
-./zig/zig build test-yaml -- typescript --verbose | grep "TEST_NAME"
-./zig/zig build test-yaml -- zig --verbose | grep "TEST_NAME"
+# Compare against TypeScript reference (94.8% baseline)
+./zig/zig build test-yaml -- typescript --verbose | grep "ZVH3\|QB6E\|236B"
 
-# Study reference implementation source code
-grep -r "specific_pattern" yaml-ts/src/
+# Study indentation handling in reference implementations
+grep -r "indent\|getCurrentIndent" yaml-ts/src/
+grep -r "sequence.*indent\|mapping.*indent" yaml-ts/src/
+
+# Debug specific test cases
+echo "- key: value\n - item1" | ./zig/zig run debug_test.zig  # ZVH3 case
+echo "foo:\n  bar\ninvalid" | ./zig/zig run debug_test.zig      # 236B case
 ```
 
-### Key Insights
+**Key Reference Files to Study**:
+- `yaml-ts/src/parse/` - TypeScript indentation validation logic
+- `yaml-spec-compressed.md` - Block sequence/mapping indent rules
+- `src/parser.zig:794-850` - Current `parseBlockSequence()` implementation
+- `src/parser.zig:875-1100` - Current `parseBlockMapping()` implementation
 
-- **Study WHY, not just WHAT**: Understanding reference implementation choices transforms "fix 67 individual tests" into "fix ~5-8 categories of issues"
-- **Avoid regressions**: Each fix should maintain current 81.3% baseline
-- **Target high-impact areas**: Some categories affect 10+ tests each
+### Key Implementation Insights
+
+- **Indentation is Critical**: ~35% of failing tests are indentation-related validation gaps
+- **Study Reference Implementations**: TypeScript parser (94.8%) has validated indentation logic to reference
+- **Systematic Approach**: Fix by category (indentation → flow → document structure) for maximum impact  
+- **Avoid Regressions**: Each fix should maintain current 81.6% baseline
+- **Test Early and Often**: Run `./zig/zig build test-yaml -- zig` after each change to verify progress
+
+**Success Metrics by Category**:
+- Indentation fixes: 328 → ~348 tests (81.6% → 86.6%)
+- Flow validation: 348 → ~358 tests (86.6% → 89.1%) 
+- Document structure: 358 → ~368 tests (89.1% → 91.5%)
+- Edge cases: 368 → 394 tests (91.5% → 98.0%)
