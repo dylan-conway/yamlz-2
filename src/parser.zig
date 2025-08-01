@@ -455,8 +455,38 @@ pub const Parser = struct {
                 
                 // Check if this line starts with a comment
                 if (self.lexer.peek() == '#') {
-                    // Comment after whitespace/newline interrupts the plain scalar
-                    // Restore position to before the line break and end the scalar
+                    // A comment line interrupts the plain scalar
+                    // But we need to check if there are continuation lines after this comment
+                    // which would make this an invalid plain scalar pattern
+                    
+                    // Look ahead to see if there are more indented lines after this comment
+                    var temp_pos = self.lexer.pos;
+                    // Skip the comment line
+                    while (temp_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[temp_pos])) {
+                        temp_pos += 1;
+                    }
+                    // Skip the line break
+                    if (temp_pos < self.lexer.input.len and Lexer.isLineBreak(self.lexer.input[temp_pos])) {
+                        temp_pos += 1;
+                    }
+                    
+                    // Check if the next line is indented and would be a continuation
+                    var next_line_spaces: usize = 0;
+                    while (temp_pos < self.lexer.input.len and self.lexer.input[temp_pos] == ' ') {
+                        temp_pos += 1;
+                        next_line_spaces += 1;
+                    }
+                    
+                    // If the next line is indented more than context and has content, 
+                    // this is invalid comment interruption
+                    if (temp_pos < self.lexer.input.len and 
+                        !Lexer.isLineBreak(self.lexer.input[temp_pos]) and 
+                        self.lexer.input[temp_pos] != '#' and
+                        next_line_spaces > context_indent) {
+                        return error.InvalidPlainScalar;
+                    }
+                    
+                    // Otherwise, comment just ends the scalar
                     self.lexer.pos = line_break_pos;
                     break;
                 }
