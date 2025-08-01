@@ -88,6 +88,37 @@ pub const Document = struct {
     }
 };
 
+pub const Stream = struct {
+    documents: std.ArrayList(Document),
+    allocator: std.mem.Allocator,
+    
+    pub fn init(allocator: std.mem.Allocator) Stream {
+        return Stream{
+            .documents = std.ArrayList(Document).init(allocator),
+            .allocator = allocator,
+        };
+    }
+    
+    pub fn deinit(self: *Stream) void {
+        for (self.documents.items) |*doc| {
+            doc.deinit();
+        }
+        self.documents.deinit();
+    }
+    
+    pub fn addDocument(self: *Stream, document: Document) !void {
+        try self.documents.append(document);
+    }
+    
+    // For backward compatibility, return the first document if there's only one
+    pub fn getSingleDocument(self: *const Stream) ?Document {
+        if (self.documents.items.len == 1) {
+            return self.documents.items[0];
+        }
+        return null;
+    }
+};
+
 pub const Directives = struct {
     yaml_version: ?[]const u8 = null,
     tags: std.ArrayList(TagDirective),

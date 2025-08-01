@@ -1822,12 +1822,115 @@ pub const Parser = struct {
         if (ch >= 'A' and ch <= 'F') return ch - 'A' + 10;
         return 0;
     }
+    
+    // Multi-document parsing functions
+    fn skipDocumentSeparator(self: *Parser) void {
+        // Skip document start (---) or end (...) markers
+        if (self.lexer.match("---") or self.lexer.match("...")) {
+            self.lexer.advance(3);
+            
+            // Skip any whitespace and comments after the marker
+            while (!self.lexer.isEOF()) {
+                const ch = self.lexer.peek();
+                if (ch == ' ' or ch == '\t') {
+                    self.lexer.advanceChar();
+                } else if (ch == '#') {
+                    // Skip comment to end of line
+                    while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
+                        self.lexer.advanceChar();
+                    }
+                } else if (Lexer.isLineBreak(ch)) {
+                    self.lexer.advanceChar();
+                    if (ch == '\r' and self.lexer.peek() == '\n') {
+                        self.lexer.advanceChar();
+                    }
+                    break;
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+    
+    fn isAtDocumentMarker(self: *const Parser) bool {
+        return self.lexer.match("---") or self.lexer.match("...");
+    }
+    
+    pub fn parseStream(self: *Parser) ParseError!ast.Stream {
+        var stream = ast.Stream.init(self.arena.allocator());
+        
+        // Skip any leading whitespace and comments
+        self.skipWhitespaceAndComments();
+        
+        while (!self.lexer.isEOF()) {
+            // Handle document start marker
+            var has_explicit_start = false;
+            if (self.lexer.match("---")) {
+                has_explicit_start = true;
+                self.skipDocumentSeparator();
+                self.skipWhitespaceAndComments();
+            }
+            
+            // Check if we have content for a document
+            if (self.lexer.isEOF()) break;
+            
+            // Parse document content
+            var document = ast.Document{
+                .allocator = self.arena.allocator(),
+            };
+            
+            // Parse directives if this is an explicit document
+            if (has_explicit_start) {
+                // TODO: Parse directives like %YAML, %TAG if present
+            }
+            
+            // Parse the document content (if any)
+            if (!self.lexer.isEOF() and !self.isAtDocumentMarker()) {
+                document.root = try self.parseValue(0);
+            }
+            
+            try stream.addDocument(document);
+            
+            // Skip whitespace and look for document end marker
+            self.skipWhitespaceAndComments();
+            
+            if (self.lexer.match("...")) {
+                self.skipDocumentSeparator();
+                self.skipWhitespaceAndComments();
+            }
+            
+            // If we're at another document marker or EOF, continue
+            if (self.lexer.isEOF() or self.isAtDocumentMarker()) {
+                continue;
+            }
+            
+            // If there's more content without explicit markers, it might be another bare document
+            // But for now, let's be conservative and stop here
+            break;
+        }
+        
+        return stream;
+    }
 };
+
+pub fn parseStream(input: []const u8) ParseError!ast.Stream {
+    var parser = Parser.init(std.heap.page_allocator, input);
+    return try parser.parseStream();
+}
 
 pub fn parse(input: []const u8) ParseError!ast.Document {
     var parser = Parser.init(std.heap.page_allocator, input);
-    const doc = try parser.parseDocument();
-    // Don't deinit the parser here as it owns the arena
-    // The Document will take ownership of the arena allocator
-    return doc;
+    
+    // Use stream parsing to handle multi-document inputs properly
+    const stream = try parser.parseStream();
+    
+    // For backward compatibility, return the first document if available
+    if (stream.documents.items.len > 0) {
+        return stream.documents.items[0];
+    } else {
+        // Return empty document
+        return ast.Document{
+            .allocator = parser.arena.allocator(),
+        };
+    }
 }
