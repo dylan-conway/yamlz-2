@@ -510,7 +510,24 @@ pub const Parser = struct {
                 // Break if: next is whitespace/newline/EOF OR (in flow context AND next is flow indicator)
                 if (Lexer.isWhitespace(next) or Lexer.isLineBreak(next) or next == 0 or 
                     (self.in_flow_context and Lexer.isFlowIndicator(next))) {
-                    // Tabs after colons are allowed as whitespace
+                    // Tabs are not allowed as indentation after ':' in block contexts
+                    // But they're OK as whitespace when mixed with spaces
+                    if (!self.in_flow_context and next == '\t') {
+                        // Check what follows the tab - if it's directly non-whitespace, that's invalid indentation
+                        var temp_pos = self.lexer.pos + 1; // Skip current char (should be ':')
+                        
+                        // Look ahead past the tab
+                        while (temp_pos < self.lexer.input.len and self.lexer.input[temp_pos] == '\t') {
+                            temp_pos += 1;
+                        }
+                        
+                        // If tab is followed directly by non-whitespace (not space), it's invalid indentation
+                        if (temp_pos < self.lexer.input.len and 
+                            !Lexer.isLineBreak(self.lexer.input[temp_pos]) and
+                            self.lexer.input[temp_pos] != ' ') {
+                            return error.TabsNotAllowed;
+                        }
+                    }
                     break;
                 }
             }
@@ -1728,8 +1745,10 @@ pub const Parser = struct {
         var trailing_breaks: usize = 0;
         
         while (!self.lexer.isEOF()) {
-            // Tabs are allowed as content in literal scalars, just not as indentation
-            // Since we're inside a literal scalar, tabs are part of the content
+            // Check for tabs at start of line in literal scalar content
+            if (self.lexer.peek() == '\t') {
+                return error.TabsNotAllowed;
+            }
             
             const line_indent = self.getCurrentIndent();
             
@@ -2056,8 +2075,11 @@ pub const Parser = struct {
     }
     
     fn skipSpacesCheckTabs(self: *Parser) ParseError!void {
-        // Skip spaces and tabs - tabs are allowed as whitespace, just not as indentation
+        // In many contexts, tabs are not allowed where spaces are expected
         while (self.lexer.peek() == ' ' or self.lexer.peek() == '\t') {
+            if (self.lexer.peek() == '\t') {
+                return error.TabsNotAllowed;
+            }
             self.lexer.advanceChar();
         }
     }
