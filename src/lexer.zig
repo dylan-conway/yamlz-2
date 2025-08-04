@@ -123,7 +123,9 @@ pub const Lexer = struct {
     }
     
     pub fn isAnchorChar(ch: u8) bool {
-        return isAlphaNumeric(ch) or ch == '_' or ch == '-';
+        // According to YAML spec, anchor names can contain most characters except:
+        // whitespace, flow indicators, and line breaks
+        return !isWhitespace(ch) and !isFlowIndicator(ch) and !isLineBreak(ch);
     }
     
     pub fn isHex(ch: u8) bool {
