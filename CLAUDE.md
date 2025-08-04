@@ -6,9 +6,9 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
 
 ## Current Implementation Status
 
-**Test Pass Rate**: 328/402 (81.6%)
+**Test Pass Rate**: 331/402 (82.3%)
 - Target: 394/402 (98%)
-- Gap: 66 tests
+- Gap: 63 tests
 
 ### Features Implemented
 1. **Core Parsing**:
@@ -55,7 +55,7 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
    - Test runner comparing against reference implementations
 
 ### Remaining Work to Reach 98%
-**Gap Analysis Complete**: To close the 66-test gap, focus on these validated categories:
+**Gap Analysis Complete**: To close the 63-test gap, focus on these validated categories:
 
 **🎯 NEXT PRIORITY: Indentation Validation** (~20-25 tests) 
 ⭐ **START HERE** - Highest impact, clearest rules from spec
@@ -89,12 +89,12 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
 - Requires significant changes to multiline scalar parsing logic
 
 **📊 TRACKING**: 
-- Current: 328/402 (81.6%)
-- With indentation fixes: ~348/402 (86.6%)
-- With flow validation: ~358/402 (89.1%)
+- Current: 331/402 (82.3%)
+- With indentation fixes: ~351/402 (87.3%)
+- With flow validation: ~361/402 (89.8%)
 - Target: 394/402 (98%)
 
-### Validation Gap Categories (81.6% Pass Rate)
+### Validation Gap Categories (82.3% Pass Rate)
 - **Too Permissive**: ~50 tests "expected error, got success" - Parser accepts invalid YAML
 - **Too Restrictive**: ~16 tests "expected success, got error" - Parser rejects valid YAML  
 - **Analysis Complete**: Detailed failing test categorization and prioritization done
@@ -283,7 +283,7 @@ Since the project is under git version control, follow these practices:
 The test runner accepts a parser backend as a command-line argument:
 
 ```bash
-# Test with your Zig parser (currently 81.3% - 327/402 passing)
+# Test with your Zig parser (currently 82.3% - 331/402 passing)
 ./zig/zig build test-yaml -- zig
 
 # Test with TypeScript parser (baseline 94.8% - reference implementation)
@@ -313,7 +313,7 @@ The test suite is in `yaml-test-suite/` with each test in its own directory:
 
 ## Development Strategy for Reaching 98%
 
-**Current Status: 328/402 (81.6%) → Target: 394/402 (98%)**
+**Current Status: 331/402 (82.3%) → Target: 394/402 (98%)**
 
 ### IMMEDIATE NEXT STEPS
 
@@ -369,11 +369,11 @@ echo "foo:\n  bar\ninvalid" | ./zig/zig run debug_test.zig      # 236B case
 - **Indentation is Critical**: ~35% of failing tests are indentation-related validation gaps
 - **Study Reference Implementations**: TypeScript parser (94.8%) has validated indentation logic to reference
 - **Systematic Approach**: Fix by category (indentation → flow → document structure) for maximum impact  
-- **Avoid Regressions**: Each fix should maintain current 81.6% baseline
+- **Avoid Regressions**: Each fix should maintain current 82.3% baseline
 - **Test Early and Often**: Run `./zig/zig build test-yaml -- zig` after each change to verify progress
 
 **Success Metrics by Category**:
-- Indentation fixes: 328 → ~348 tests (81.6% → 86.6%)
-- Flow validation: 348 → ~358 tests (86.6% → 89.1%) 
-- Document structure: 358 → ~368 tests (89.1% → 91.5%)
-- Edge cases: 368 → 394 tests (91.5% → 98.0%)
+- Indentation fixes: 331 → ~351 tests (82.3% → 87.3%)
+- Flow validation: 351 → ~361 tests (87.3% → 89.8%) 
+- Document structure: 361 → ~371 tests (89.8% → 92.3%)
+- Edge cases: 371 → 394 tests (92.3% → 98.0%)

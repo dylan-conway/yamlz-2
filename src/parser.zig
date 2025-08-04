@@ -47,6 +47,7 @@ pub const ParseError = error{
     InvalidDocumentMarker,
     InvalidNestedMapping,
     InvalidMultilineKey,
+    InvalidDocumentStructure,
 };
 
 pub const Parser = struct {
@@ -192,26 +193,17 @@ pub const Parser = struct {
         // "invalid" appears at wrong indentation after a mapping value.
         if (root != null) {
             self.skipWhitespaceAndComments();
+            
             if (!self.lexer.isEOF()) {
                 // There's remaining non-whitespace content. Check if it's valid.
-                // For single-document parsing, any remaining content at root level
-                // that isn't another document marker should be an error.
                 const remaining_char = self.lexer.peek();
-                if (remaining_char != '-' and remaining_char != '.') {
-                    // This is likely invalid content like "invalid" in 236B
-                    // Try to parse it as a value to see if it forms a valid structure
-                    const remaining_pos = self.lexer.pos;
-                    const maybe_value = self.parseValue(0) catch null;
-                    
-                    if (maybe_value == null) {
-                        // Could not parse remaining content as valid YAML
-                        return error.InvalidDocumentStructure;
-                    }
-                    
-                    // Even if we could parse it, having multiple root values 
-                    // in a single document is invalid YAML
-                    self.lexer.pos = remaining_pos; // Reset position
-                    return error.MultipleDocumentRoots;
+                
+                // Check for document markers
+                if (self.lexer.match("---") or self.lexer.match("...")) {
+                    // Valid document marker - this is OK
+                } else if (remaining_char != 0) {
+                    // Any other content at root level after the document is invalid
+                    return error.InvalidDocumentStructure;
                 }
             }
         }
@@ -1020,15 +1012,15 @@ pub const Parser = struct {
             else 
                 self.getCurrentIndent();
                 
-            // std.debug.print("DEBUG: parseBlockSequence while loop, current_indent={}, min_indent={}, pos={}, char='{}' ({}), first_item_on_same_line={}\n",
-            //     .{current_indent, min_indent, self.lexer.pos, self.lexer.peek(), self.lexer.peek(), first_item_on_same_line});
+            // std.debug.print("DEBUG: parseBlockSequence while loop, current_indent={}, min_indent={}, sequence_indent={?}, pos={}, char='{}' ({}), first_item_on_same_line={}\n",
+            //     .{current_indent, min_indent, sequence_indent, self.lexer.pos, self.lexer.peek(), self.lexer.peek(), first_item_on_same_line});
             
             if (current_indent < min_indent) break;
             
             // If this is not the first item, check that it's at the same indent
             if (sequence_indent) |seq_indent| {
                 if (current_indent != seq_indent) {
-                    // Don't check for wrong indentation here - it might be part of a multiline scalar
+                    // Not at the same indent - this ends the sequence
                     break;
                 }
             } else {
@@ -1088,6 +1080,18 @@ pub const Parser = struct {
                 // We should skip to the next line to continue with the next sequence item.
                 self.skipToNextLine();
             } else {
+                // We're not at a valid sequence item position
+                
+                // If we have an established sequence indent and we see a '-' at different indent,
+                // that's an error (like ZVH3 case)
+                if (sequence_indent != null and self.lexer.peek() == '-' and 
+                    (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or 
+                     self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or 
+                     self.lexer.peekNext() == 0)) {
+                    // This is a sequence indicator at wrong indentation
+                    return error.WrongIndentation;
+                }
+                
                 // Check if there's content at this indentation level that should be parsed
                 // but isn't a valid sequence item (missing '-' prefix)
                 if (current_indent == (sequence_indent orelse min_indent)) {
@@ -1097,8 +1101,6 @@ pub const Parser = struct {
                         return error.InvalidAnchor;
                     }
                 }
-                
-                // Don't check for misaligned sequence items here - they might be part of multiline scalars
                 
                 break;
             }
@@ -1325,13 +1327,9 @@ pub const Parser = struct {
                 
                 try node.data.mapping.pairs.append(.{ .key = key.?, .value = value.? });
                 
-                // // std.debug.print("Debug HU3P: Added mapping pair, about to skip to next line\n", .{});
-                
                 // Always skip to the next line after parsing a mapping pair
                 if (!self.lexer.isEOF()) {
                     self.skipToNextLine();
-                    // // std.debug.print("Debug HU3P: After skipToNextLine, pos={}, line={}, col={}\n", 
-                    //     .{self.lexer.pos, self.lexer.line, self.lexer.column});
                 }
             } else {
                 if (key) |k| {
@@ -1608,6 +1606,7 @@ pub const Parser = struct {
         if (!self.lexer.isEOF() and self.lexer.peek() == '#') {
             return error.InvalidComment;
         }
+        
         
         const node = try self.arena.allocator().create(ast.Node);
         node.* = .{
