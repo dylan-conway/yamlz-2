@@ -1160,7 +1160,10 @@ pub const Parser = struct {
                     pending_explicit_key = null;
                     self.lexer.advanceChar(); // Skip ':'
                     
-                    // Tabs after colon are allowed as whitespace
+                    // Check for tabs after colon - they are not allowed
+                    if (self.lexer.peek() == '\t') {
+                        return error.TabsNotAllowed;
+                    }
                 } else {
                     // No colon found after explicit key - this means the key has no value (null)
                     key = pkey;
@@ -1242,7 +1245,10 @@ pub const Parser = struct {
                         // Valid mapping colon on same line  
                         self.lexer.advanceChar(); // Skip ':'
                         
-                        // Tabs after colon are allowed as whitespace
+                        // Check for tabs after colon - they are not allowed
+                        if (self.lexer.peek() == '\t') {
+                            return error.TabsNotAllowed;
+                        }
                     } else {
                         // The colon is not a proper mapping colon, or mapping colon is on next line
                         // Skip any remaining content on this line and move to next line
@@ -1289,7 +1295,10 @@ pub const Parser = struct {
                     }
                     self.lexer.advanceChar();
                     
-                    // Tabs after colon are allowed as whitespace
+                    // Check for tabs after colon - they are not allowed
+                    if (self.lexer.peek() == '\t') {
+                        return error.TabsNotAllowed;
+                    }
                 }
             }
             
