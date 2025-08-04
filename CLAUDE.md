@@ -197,7 +197,15 @@ The yaml-test-suite no longer uses the old format with embedded YAML in test fil
 
 ## Development Workflow
 
-1. **Study Reference Implementations First**: Before attempting to fix failing tests:
+1. **Revert Non-Working Changes**: When making changes to fix a bug or test:
+   - If the changes don't fix the intended bug/test, **revert them immediately**
+   - Only keep changes if:
+     - They fix the intended issue, OR
+     - You believe they are correct and additional changes are needed to complete the fix
+   - This prevents accumulating broken changes that may cause regressions
+   - Use git to track changes and revert when needed
+
+2. **Study Reference Implementations First**: Before attempting to fix failing tests:
    - Read the relevant parsing functions in `yaml-ts/` and `yaml-rs/`
    - Understand HOW they handle the edge cases, not just WHAT they do
    - Look for patterns in their validation logic
