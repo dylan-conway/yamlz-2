@@ -48,6 +48,7 @@ pub const ParseError = error{
     InvalidNestedMapping,
     InvalidMultilineKey,
     InvalidDocumentStructure,
+    InconsistentIndentation,
 };
 
 pub const Parser = struct {
@@ -1020,6 +1021,11 @@ pub const Parser = struct {
             // If this is not the first item, check that it's at the same indent
             if (sequence_indent) |seq_indent| {
                 if (current_indent != seq_indent) {
+                    // Check if this line starts with a '-' indicator
+                    if (self.lexer.peek() == '-' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
+                        // This is a sequence item at wrong indentation - error!
+                        return error.InconsistentIndentation;
+                    }
                     // Not at the same indent - this ends the sequence
                     break;
                 }
