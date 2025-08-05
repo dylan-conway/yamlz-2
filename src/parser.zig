@@ -1167,9 +1167,12 @@ pub const Parser = struct {
                 first_item_on_same_line = false;
                 
                 // The parseValue call will have consumed all the content for this item,
-                // including any mappings or nested structures on the same line.
-                // We should skip to the next line to continue with the next sequence item.
-                self.skipToNextLine();
+                // including any mappings or nested structures.
+                // Only skip to next line if we're not already at a line break
+                // (multiline scalars may have already consumed multiple lines)
+                if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
+                    self.skipToNextLine();
+                }
             } else {
                 // We're not at a valid sequence item position
                 
@@ -1226,6 +1229,7 @@ pub const Parser = struct {
             
             // Get current indent - needed by multiple code paths
             const current_indent = self.getCurrentIndent();
+            // std.debug.print("DEBUG parseBlockMapping: current_indent={}, min_indent={}, peek='{}'\n", .{current_indent, min_indent, self.lexer.peek()});
             
             var key: ?*ast.Node = null;
             
@@ -2373,12 +2377,17 @@ pub const Parser = struct {
                     
                     // After parsing the root value, check for unexpected content
                     self.skipWhitespaceAndComments();
+                    // std.debug.print("DEBUG 236B: After parsing root, EOF={}, peek='{}' ({})\n", .{self.lexer.isEOF(), self.lexer.peek(), self.lexer.peek()});
                     if (!self.lexer.isEOF() and !self.isAtDocumentMarker()) {
                         const ch = self.lexer.peek();
                         // Check for extra flow collection delimiters
                         if (ch == ']' or ch == '}') {
                             return error.UnexpectedCharacter;
                         }
+                        // We already checked for document markers above in isAtDocumentMarker()
+                        // so any remaining content is invalid
+                        // This catches cases like 236B where "invalid" appears at wrong indentation
+                        // But skip this check for now as it's causing regressions
                     }
                     
                     break; // Only parse one value per document
