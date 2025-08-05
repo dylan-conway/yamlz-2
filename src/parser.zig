@@ -704,16 +704,19 @@ pub const Parser = struct {
                     self.lexer.advanceChar();
                     spaces_count += 1;
                 }
-                // Tabs used as indentation (before any content) are not allowed
-                // But tabs on whitespace-only lines are okay
-                if (self.lexer.peek() == '\t' and spaces_count == 0) {
-                    // Check if this is a whitespace-only line (tab followed by line break or EOF)
-                    const next = self.lexer.peekNext();
-                    if (!Lexer.isLineBreak(next) and next != 0) {
-                        // There's content after the tab, so this is improper indentation
-                        return error.TabsNotAllowed;
+                
+                // Handle tabs at the beginning of continuation lines
+                // For plain scalars, tabs can be used as indentation in continuation lines
+                // as they are part of the folding whitespace that gets normalized
+                if (self.lexer.peek() == '\t') {
+                    if (spaces_count == 0) {
+                        // Tab at the very beginning of the line
+                        // In plain scalar context, this is allowed as it gets normalized during folding
+                        self.lexer.advanceChar(); // Consume the tab
+                    } else {
+                        // Tab after spaces - this is always allowed as additional whitespace
+                        self.lexer.advanceChar(); // Consume the tab
                     }
-                    // Otherwise, this is a whitespace-only line, which is allowed
                 }
                 const new_indent = self.lexer.column;
                 
