@@ -1845,8 +1845,8 @@ pub const Parser = struct {
         // Block scalar indicators can come in either order: chomp then indent or indent then chomp
         var ch = self.lexer.peek();
         
-        // First, check for indent indicator (digit)
-        if (Lexer.isDecimal(ch)) {
+        // First, check for indent indicator (digit 1-9, not 0)
+        if (ch >= '1' and ch <= '9') {
             explicit_indent = @as(usize, ch - '0');
             self.lexer.advanceChar();
             ch = self.lexer.peek();
@@ -1862,7 +1862,7 @@ pub const Parser = struct {
         }
         
         // If we didn't find indent before chomp, check again after chomp
-        if (explicit_indent == null and Lexer.isDecimal(self.lexer.peek())) {
+        if (explicit_indent == null and (self.lexer.peek() >= '1' and self.lexer.peek() <= '9')) {
             explicit_indent = @as(usize, self.lexer.peek() - '0');
             self.lexer.advanceChar();
         }
@@ -2007,8 +2007,8 @@ pub const Parser = struct {
         // Block scalar indicators can come in either order: chomp then indent or indent then chomp
         var ch = self.lexer.peek();
         
-        // First, check for indent indicator (digit)
-        if (Lexer.isDecimal(ch)) {
+        // First, check for indent indicator (digit 1-9, not 0)
+        if (ch >= '1' and ch <= '9') {
             explicit_indent = @as(usize, ch - '0');
             self.lexer.advanceChar();
             ch = self.lexer.peek();
@@ -2024,7 +2024,7 @@ pub const Parser = struct {
         }
         
         // If we didn't find indent before chomp, check again after chomp
-        if (explicit_indent == null and Lexer.isDecimal(self.lexer.peek())) {
+        if (explicit_indent == null and (self.lexer.peek() >= '1' and self.lexer.peek() <= '9')) {
             explicit_indent = @as(usize, self.lexer.peek() - '0');
             self.lexer.advanceChar();
         }
