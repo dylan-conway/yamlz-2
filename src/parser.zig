@@ -1103,6 +1103,13 @@ pub const Parser = struct {
         }
         
         while (!self.lexer.isEOF()) {
+            // Skip whitespace and comments at the beginning of each iteration
+            // This ensures we're positioned at the start of actual content
+            if (!first_item_on_same_line) {
+                self.skipWhitespaceAndComments();
+                if (self.lexer.isEOF()) break;
+            }
+            
             const current_indent = if (first_item_on_same_line) 
                 starting_column - 1 
             else 
@@ -1111,9 +1118,8 @@ pub const Parser = struct {
             // std.debug.print("DEBUG: parseBlockSequence while loop, current_indent={}, min_indent={}, sequence_indent={?}, pos={}, char='{}' ({}), first_item_on_same_line={}\n",
             //     .{current_indent, min_indent, sequence_indent, self.lexer.pos, self.lexer.peek(), self.lexer.peek(), first_item_on_same_line});
             
-            if (current_indent < min_indent) break;
-            
-            // If this is not the first item, check that it's at the same indent
+            // IMPORTANT: Check sequence indentation consistency BEFORE checking min_indent
+            // This allows us to detect sequence items at wrong indentation
             if (sequence_indent) |seq_indent| {
                 if (current_indent != seq_indent) {
                     // Check if this line starts with a '-' indicator
@@ -1128,6 +1134,8 @@ pub const Parser = struct {
                 // First item - remember its indent
                 sequence_indent = current_indent;
             }
+            
+            if (current_indent < min_indent) break;
             
             if (self.lexer.peek() == '-' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
                 // Before processing a new sequence item, check for tabs in its indentation
