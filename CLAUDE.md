@@ -30,7 +30,7 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
    - YAML 1.1 boolean compatibility (yes/no, on/off, y/n)
    - **Multi-document streams** - ✅ **COMPLETED** with `---` and `...` markers
 
-3. **Recent Major Fixes** (2024-2025 Sessions):
+3. **Recent Major Fixes**:
    ✅ **Explicit Key Syntax (X8DW, ZWK4)**: Complete support for `?` indicator with comment separation and null values
    ✅ **Flow Collection Comments (7TMG)**: Fixed overly restrictive comment validation in flow contexts
    ✅ **Multi-Document Support**: Complete streams with `---`/`...` separators (M7A3, U9NS, 6XDY, 35KP)
@@ -401,7 +401,7 @@ cat yaml-test-suite/src/U9NS/in.yaml  # Check multi-doc edge case
 
 ### Lessons Learned from Fix Attempts
 
-**Session Summary (2025)**: 
+**Session Summary**: 
 - Initial attempts: Fixes for 236B, H7J7, JKF3, and RHX7 caused regression from 331 to 277 tests
 - Recovery: Reverted problematic changes and implemented targeted fixes
 - Progress: Successfully fixed 6CA3, 5U3A, 5TRB, 3GZX, 236B (+9 tests total)
