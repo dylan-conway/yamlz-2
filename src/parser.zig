@@ -1729,7 +1729,7 @@ pub const Parser = struct {
                         }
                         continuation_indent = 0; // Reset for next line
                     } else {
-                        // Found content - validate indentation
+                        // Found content - validate indentation and check for invalid markers
                         // For multiline double-quoted strings, continuation lines must have proper indentation.
                         // They must be indented more than the parent context (except for the closing quote).
                         // Exception: At document root level (start_column <= 4), continuation lines can have zero indent.
@@ -1739,6 +1739,34 @@ pub const Parser = struct {
                             // in a non-root context. This violates YAML spec for multiline double-quoted strings
                             return error.InvalidIndentation;
                         }
+                        
+                        // Check for document markers inside double-quoted strings
+                        // Document start (---) and end (...) markers are not allowed as literal content
+                        if (next_ch == '-' or next_ch == '.') {
+                            // Look ahead to see if this is a document marker
+                            const save_pos = self.lexer.pos;
+                            var marker_chars: u8 = 0;
+                            const marker_char = next_ch;
+                            
+                            // Count consecutive marker characters
+                            while (!self.lexer.isEOF() and self.lexer.peek() == marker_char) {
+                                marker_chars += 1;
+                                self.lexer.advanceChar();
+                            }
+                            
+                            // Check if this forms a document marker (3 chars followed by whitespace/EOF)
+                            const is_document_marker = marker_chars >= 3 and 
+                                (self.lexer.isEOF() or self.lexer.peek() == ' ' or self.lexer.peek() == '\t' or 
+                                 self.lexer.peek() == '\n' or self.lexer.peek() == '\r');
+                            
+                            // Restore position
+                            self.lexer.pos = save_pos;
+                            
+                            if (is_document_marker) {
+                                return error.InvalidDocumentMarker;
+                            }
+                        }
+                        
                         break;
                     }
                 }
