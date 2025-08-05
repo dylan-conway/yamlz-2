@@ -677,6 +677,45 @@ pub const Parser = struct {
         }
         
         
+        // Additional check: even when multiline is not allowed, detect invalid comment interruption patterns
+        // This catches cases like 8XDJ where a comment interrupts what appears to be a continuation
+        if (!allow_multiline and !self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek())) {
+            // Look ahead to see if there's a comment followed by indented content
+            var temp_pos = self.lexer.pos + 1; // Skip line break
+            
+            // Skip to start of next line
+            while (temp_pos < self.lexer.input.len and Lexer.isLineBreak(self.lexer.input[temp_pos])) {
+                temp_pos += 1;
+            }
+            
+            // Check if this line starts with a comment
+            if (temp_pos < self.lexer.input.len and self.lexer.input[temp_pos] == '#') {
+                // Skip the comment line
+                while (temp_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[temp_pos])) {
+                    temp_pos += 1;
+                }
+                // Skip line break after comment
+                if (temp_pos < self.lexer.input.len and Lexer.isLineBreak(self.lexer.input[temp_pos])) {
+                    temp_pos += 1;
+                }
+                
+                // Check if the next line is indented and has content
+                var next_line_spaces: usize = 0;
+                while (temp_pos < self.lexer.input.len and self.lexer.input[temp_pos] == ' ') {
+                    temp_pos += 1;
+                    next_line_spaces += 1;
+                }
+                
+                // If there's indented content after a comment, this is invalid comment interruption
+                if (temp_pos < self.lexer.input.len and 
+                    !Lexer.isLineBreak(self.lexer.input[temp_pos]) and 
+                    self.lexer.input[temp_pos] != '#' and
+                    next_line_spaces > 0) {
+                    return error.InvalidPlainScalar;
+                }
+            }
+        }
+        
         if (!self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek()) and allow_multiline) {
             var first_continuation_indent: ?usize = null;
             var comment_interrupted_previous_line = false;
