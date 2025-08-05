@@ -54,7 +54,7 @@ pub const ParseError = error{
 pub const Parser = struct {
     lexer: Lexer,
     allocator: std.mem.Allocator,
-    arena: std.heap.ArenaAllocator,
+    arena: *std.heap.ArenaAllocator,  // Changed to pointer
     in_flow_context: bool = false,
     parsing_explicit_key: bool = false,
     has_yaml_directive: bool = false,
@@ -63,19 +63,26 @@ pub const Parser = struct {
     has_document_content: bool = false,
     context: Context = .BLOCK_OUT,  // Current parser context
     context_stack: std.ArrayList(Context),  // Stack for nested contexts
+    anchors: std.StringHashMap(*ast.Node),  // For anchor/alias resolution
+    tag_handles: std.StringHashMap([]const u8),  // For TAG directive support
     
-    pub fn init(allocator: std.mem.Allocator, input: []const u8) Parser {
-        var arena = std.heap.ArenaAllocator.init(allocator);
+    pub fn init(allocator: std.mem.Allocator, input: []const u8) !Parser {
+        const arena = try allocator.create(std.heap.ArenaAllocator);
+        arena.* = std.heap.ArenaAllocator.init(allocator);
+        const arena_alloc = arena.allocator();
         return .{
             .lexer = Lexer.init(input),
             .allocator = allocator,
             .arena = arena,
-            .context_stack = std.ArrayList(Context).init(arena.allocator()),
+            .context_stack = std.ArrayList(Context).init(arena_alloc),
+            .anchors = std.StringHashMap(*ast.Node).init(arena_alloc),
+            .tag_handles = std.StringHashMap([]const u8).init(arena_alloc),
         };
     }
     
     pub fn deinit(self: *Parser) void {
         self.arena.deinit();
+        self.allocator.destroy(self.arena);
     }
     
     fn pushContext(self: *Parser, new_context: Context) !void {
@@ -102,6 +109,10 @@ pub const Parser = struct {
     }
     
     pub fn parseDocument(self: *Parser) ParseError!ast.Document {
+        // Clear anchors and tag handles for each document
+        self.anchors.clearRetainingCapacity();
+        self.tag_handles.clearRetainingCapacity();
+        
         self.skipWhitespaceAndComments();
         
         // Parse directives
@@ -156,8 +167,40 @@ pub const Parser = struct {
                         return error.UnsupportedYamlVersion;
                     }
                 } else if (std.mem.eql(u8, directive_name, "TAG")) {
-                    // Skip TAG directive for now - we don't support custom tags yet
-                    self.lexer.skipToEndOfLine();
+                    // Parse TAG directive
+                    // Skip whitespace to tag handle
+                    while (!self.lexer.isEOF() and Lexer.isWhitespace(self.lexer.peek())) {
+                        self.lexer.advanceChar();
+                    }
+                    
+                    // Parse tag handle (e.g., !e!)
+                    const handle_start = self.lexer.pos;
+                    if (self.lexer.peek() == '!') {
+                        self.lexer.advanceChar(); // First !
+                        // Parse handle characters
+                        while (!self.lexer.isEOF() and !Lexer.isWhitespace(self.lexer.peek()) and self.lexer.peek() != '!') {
+                            self.lexer.advanceChar();
+                        }
+                        if (self.lexer.peek() == '!') {
+                            self.lexer.advanceChar(); // Closing !
+                        }
+                    }
+                    const handle = self.lexer.input[handle_start..self.lexer.pos];
+                    
+                    // Skip whitespace to prefix
+                    while (!self.lexer.isEOF() and Lexer.isWhitespace(self.lexer.peek())) {
+                        self.lexer.advanceChar();
+                    }
+                    
+                    // Parse tag prefix (URI)
+                    const prefix_start = self.lexer.pos;
+                    while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and !Lexer.isWhitespace(self.lexer.peek()) and self.lexer.peek() != '#') {
+                        self.lexer.advanceChar();
+                    }
+                    const prefix = self.lexer.input[prefix_start..self.lexer.pos];
+                    
+                    // Store the tag handle mapping
+                    try self.tag_handles.put(handle, prefix);
                 } else {
                     // Unknown directive - skip it with a warning (not an error)
                     self.lexer.skipToEndOfLine();
@@ -216,6 +259,7 @@ pub const Parser = struct {
     }
     
     fn parseValue(self: *Parser, min_indent: usize) ParseError!?*ast.Node {
+        // std.debug.print("DEBUG: parseValue called, min_indent={}, peek='{}'\n", .{min_indent, self.lexer.peek()});
         self.skipWhitespaceAndComments();
         
         // // std.debug.print("DEBUG: parseValue called, char = '{}' ({}), column = {}, line = {}\n", .{self.lexer.peek(), self.lexer.peek(), self.lexer.column, self.lexer.line});
@@ -237,7 +281,9 @@ pub const Parser = struct {
                     self.lexer.advanceChar();
                 }
                 anchor = self.lexer.input[start..self.lexer.pos];
-                self.skipWhitespaceAndComments();
+                // std.debug.print("DEBUG: Found anchor '{s}'\n", .{anchor.?});
+                // Only skip spaces on the same line, not newlines
+                self.skipSpaces();
             } else if (ch == '!') {
                 // Tag
                 self.lexer.advanceChar(); // Skip '!'
@@ -260,7 +306,8 @@ pub const Parser = struct {
                 }
                 
                 tag = self.lexer.input[start - 1..self.lexer.pos]; // Include the '!'
-                self.skipWhitespaceAndComments();
+                // Only skip spaces on the same line, not newlines
+                self.skipSpaces();
             } else if (ch == '*') {
                 // Alias
                 self.lexer.advanceChar(); // Skip '*'
@@ -270,18 +317,25 @@ pub const Parser = struct {
                 }
                 const alias_name = self.lexer.input[start..self.lexer.pos];
                 
-                const node = try self.arena.allocator().create(ast.Node);
-                node.* = .{
-                    .type = .alias,
-                    .data = .{ .alias = alias_name },
-                };
-                return node;
+                // Look up the alias in the anchors map
+                // std.debug.print("DEBUG: Looking up alias '{s}'\n", .{alias_name});
+                // std.debug.print("DEBUG: Anchors map has {} entries\n", .{self.anchors.count()});
+                if (self.anchors.get(alias_name)) |anchor_node| {
+                    // Return the referenced node directly
+                    // std.debug.print("DEBUG: Found alias '{}', returning node type {}\n", .{alias_name, anchor_node.type});
+                    return anchor_node;
+                } else {
+                    // Alias not found - this is an error
+                    // std.debug.print("DEBUG: Alias '{}' not found in anchors map\n", .{alias_name});
+                    return error.InvalidAlias;
+                }
             } else {
                 break;
             }
         }
         
         const ch = self.lexer.peek();
+        // std.debug.print("DEBUG: After anchor/tag loop, ch='{}' ({})\n", .{ch, ch});
         
         // Check for document markers in flow context - they're not allowed
         if (self.in_flow_context) {
@@ -454,26 +508,57 @@ pub const Parser = struct {
                         self.lexer.pos = saved_pos;
                     }
                 }
-            } else {
+            } else if (self.isPlainScalarStart(ch)) {
+                // Only parse plain scalar if character is valid start
                 node = try self.parsePlainScalar();
             }
+            // else node remains null
+        }
+        
+        // If we have anchor or tag but no node, create a null node
+        if (node == null and (anchor != null or tag != null)) {
+            // std.debug.print("DEBUG: Creating null node for anchor/tag with no value\n", .{});
+            node = try self.createNullNode();
         }
         
         // Apply anchor and tag if present
         if (node) |n| {
             if (anchor) |a| {
+                // Check for duplicate anchor
+                if (self.anchors.get(a) != null) {
+                    return error.DuplicateAnchor;
+                }
+                // Register the anchor
+                try self.anchors.put(a, n);
                 n.anchor = a;
+                // std.debug.print("DEBUG: Registered anchor '{s}' with node type {}\n", .{a, n.type});
             }
             if (tag) |t| {
-                n.tag = t;
-            }
-        } else {
-            // If we have anchor or tag but no node, that's an error
-            if (anchor != null) {
-                return error.InvalidAnchor;
-            }
-            if (tag != null) {
-                return error.InvalidTag;
+                // Resolve shorthand tags if applicable
+                var resolved_tag = t;
+                
+                // Check if this is a shorthand tag that needs resolution
+                if (t.len > 1 and t[0] == '!') {
+                    // Find the end of the handle (second !)
+                    var handle_end: usize = 1;
+                    while (handle_end < t.len and t[handle_end] != '!') : (handle_end += 1) {}
+                    if (handle_end < t.len and t[handle_end] == '!') {
+                        handle_end += 1;
+                        const handle = t[0..handle_end];
+                        const suffix = t[handle_end..];
+                        
+                        // Look up the handle in our tag_handles map
+                        if (self.tag_handles.get(handle)) |prefix| {
+                            // Concatenate prefix and suffix
+                            var tag_buffer = std.ArrayList(u8).init(self.arena.allocator());
+                            try tag_buffer.appendSlice(prefix);
+                            try tag_buffer.appendSlice(suffix);
+                            resolved_tag = tag_buffer.items;
+                        }
+                    }
+                }
+                
+                n.tag = resolved_tag;
             }
         }
         
@@ -2259,6 +2344,10 @@ pub const Parser = struct {
             // Reset document content flag for each document
             self.has_document_content = false;
             
+            // Clear anchors and tag handles for each document
+            self.anchors.clearRetainingCapacity();
+            self.tag_handles.clearRetainingCapacity();
+            
             // Parse directives if this is an explicit document
             if (has_explicit_start) {
                 // TODO: Parse directives like %YAML, %TAG if present
@@ -2321,15 +2410,21 @@ pub const Parser = struct {
 };
 
 pub fn parseStream(input: []const u8) ParseError!ast.Stream {
-    var parser = Parser.init(std.heap.page_allocator, input);
-    return try parser.parseStream();
+    // Create parser on heap to keep arena alive
+    const parser_ptr = try std.heap.page_allocator.create(Parser);
+    parser_ptr.* = try Parser.init(std.heap.page_allocator, input);
+    // Don't deinit the parser - the arena owns the memory
+    return try parser_ptr.parseStream();
 }
 
 pub fn parse(input: []const u8) ParseError!ast.Document {
-    var parser = Parser.init(std.heap.page_allocator, input);
+    // Create parser on heap to keep arena alive
+    const parser_ptr = try std.heap.page_allocator.create(Parser);
+    parser_ptr.* = try Parser.init(std.heap.page_allocator, input);
+    // Don't deinit the parser - the arena owns the memory and we need it to stay alive
     
     // Use stream parsing to handle multi-document inputs properly
-    const stream = try parser.parseStream();
+    const stream = try parser_ptr.parseStream();
     
     // For backward compatibility, return the first document if available
     if (stream.documents.items.len > 0) {
@@ -2337,7 +2432,7 @@ pub fn parse(input: []const u8) ParseError!ast.Document {
     } else {
         // Return empty document
         return ast.Document{
-            .allocator = parser.arena.allocator(),
+            .allocator = parser_ptr.arena.allocator(),
         };
     }
 }
