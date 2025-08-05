@@ -1438,7 +1438,8 @@ pub const Parser = struct {
                             // If it starts with special characters, it might be valid non-key content
                             if (scalar_value[0] != '&' and scalar_value[0] != '*' and 
                                 scalar_value[0] != '!' and scalar_value[0] != '-' and
-                                scalar_value[0] != '[' and scalar_value[0] != '{') {
+                                scalar_value[0] != '[' and scalar_value[0] != '{' and
+                                scalar_value[0] != '.') {
                                 // This looks like a plain word that's not a key - invalid
                                 return error.InvalidValueAfterMapping;
                             }
