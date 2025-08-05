@@ -2229,8 +2229,15 @@ pub const Parser = struct {
     fn skipWhitespaceAndCommentsInFlow(self: *Parser) ParseError!void {
         while (!self.lexer.isEOF()) {
             // At start of line in flow context, tabs are not allowed as indentation
-            // But only if they're followed by content on the same line
+            // But only if they're followed by content on the same line AND we're not at document level
             if (self.lexer.column == 1 and self.lexer.peek() == '\t') {
+                // Allow tabs at document level (shallow nesting)
+                if (self.context_stack.items.len <= 1) {
+                    // At document level, tabs are allowed for flow sequences/mappings
+                    self.lexer.skipWhitespace();
+                    continue;
+                }
+                
                 // Look ahead to see if there's non-whitespace content on this line
                 var lookahead = self.lexer.pos + 1;
                 while (lookahead < self.lexer.input.len and (self.lexer.input[lookahead] == '\t' or self.lexer.input[lookahead] == ' ')) {
