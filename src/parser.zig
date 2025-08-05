@@ -532,11 +532,8 @@ pub const Parser = struct {
         // Apply anchor and tag if present
         if (node) |n| {
             if (anchor) |a| {
-                // Check for duplicate anchor
-                if (self.anchors.get(a) != null) {
-                    return error.DuplicateAnchor;
-                }
-                // Register the anchor
+                // Register the anchor (redefinition is allowed per YAML 1.2 spec)
+                // Aliases refer to the most recent node with the same anchor name
                 try self.anchors.put(a, n);
                 n.anchor = a;
                 // std.debug.print("DEBUG: Registered anchor '{s}' with node type {}\n", .{a, n.type});
