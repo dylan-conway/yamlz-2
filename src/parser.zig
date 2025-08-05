@@ -161,6 +161,12 @@ pub const Parser = struct {
                         self.lexer.advanceChar();
                     }
                     
+                    // Check for extra content after version (should only be comment or line end)
+                    if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and self.lexer.peek() != '#') {
+                        // Extra content after YAML version - error
+                        return error.InvalidDirective;
+                    }
+                    
                     const version = self.lexer.input[version_start..version_end];
                     
                     // Support both YAML 1.1 and 1.2
