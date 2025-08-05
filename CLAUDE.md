@@ -6,9 +6,9 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
 
 ## Current Implementation Status
 
-**Test Pass Rate**: 340/402 (84.6%)
+**Test Pass Rate**: 348/402 (86.6%)
 - Target: 394/402 (98%)
-- Gap: 54 tests
+- Gap: 46 tests
 
 ### Features Implemented
 1. **Core Parsing**:
@@ -31,6 +31,7 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
    - **Multi-document streams** - ✅ **COMPLETED** with `---` and `...` markers
 
 3. **Recent Major Fixes**:
+   ✅ **SU74**: Reject anchors on alias nodes - aliases cannot have properties per YAML spec
    ✅ **Explicit Key Syntax (X8DW, ZWK4)**: Complete support for `?` indicator with comment separation and null values
    ✅ **Flow Collection Comments (7TMG)**: Fixed overly restrictive comment validation in flow contexts
    ✅ **Multi-Document Support**: Complete streams with `---`/`...` separators (M7A3, U9NS, 6XDY, 35KP)
@@ -60,7 +61,7 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
    - Test runner comparing against reference implementations
 
 ### Remaining Work to Reach 98%
-**Gap Analysis Updated**: To close the 54-test gap, focus on these categories:
+**Gap Analysis Updated**: To close the 46-test gap, focus on these categories:
 
 **🎯 NEXT PRIORITY: Too Restrictive Fixes** (~14 tests) 
 ⭐ **LOW-HANGING FRUIT** - Valid YAML being rejected incorrectly
@@ -105,16 +106,16 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
 - Need careful implementation to avoid regressions
 
 **📊 TRACKING**: 
-- Current: 340/402 (84.6%)
-- With "too restrictive" fixes: ~354/402 (88.1%)
-- With flow validation: ~364/402 (90.5%)
-- With document structure: ~372/402 (92.5%)
+- Current: 348/402 (86.6%)
+- With "too restrictive" fixes: ~362/402 (90.0%)
+- With flow validation: ~372/402 (92.5%)
+- With document structure: ~380/402 (94.5%)
 - Target: 394/402 (98%)
 
-### Validation Gap Categories (84.6% Pass Rate)
-- **Too Permissive**: 48 tests "expected error, got success" - Parser accepts invalid YAML
-- **Too Restrictive**: 14 tests "expected success, got error" - Parser rejects valid YAML  
-- **Progress Made**: +9 tests fixed since last major update
+### Validation Gap Categories (86.6% Pass Rate)
+- **Too Permissive**: 46 tests "expected error, got success" - Parser accepts invalid YAML
+- **Too Restrictive**: 8 tests "expected success, got error" - Parser rejects valid YAML  
+- **Progress Made**: +8 tests fixed (340 → 348)
 - **Architecture Ready**: Parser has solid validation framework, ready for systematic improvements
 
 ## Important Resources
@@ -394,14 +395,19 @@ cat yaml-test-suite/src/U9NS/in.yaml  # Check multi-doc edge case
 - **Test Early and Often**: Run `./zig/zig build test-yaml -- zig` after each change to verify progress
 
 **Success Metrics by Category**:
-- Too restrictive fixes: 340 → ~354 tests (84.6% → 88.1%)
-- Flow validation: 354 → ~364 tests (88.1% → 90.5%) 
-- Document structure: 364 → ~372 tests (90.5% → 92.5%)
-- Edge cases: 372 → 394 tests (92.5% → 98.0%)
+- Too restrictive fixes: 348 → ~362 tests (86.6% → 90.0%)
+- Flow validation: 362 → ~372 tests (90.0% → 92.5%) 
+- Document structure: 372 → ~380 tests (92.5% → 94.5%)
+- Edge cases: 380 → 394 tests (94.5% → 98.0%)
 
 ### Lessons Learned from Fix Attempts
 
-**Session Summary**: 
+**Latest Session Summary**: 
+- Successfully fixed SU74: Reject anchors on alias nodes (+2 tests)
+- Progress from 346 → 348 tests (86.1% → 86.6%)
+- Parallel worktree approach attempted but fixes need proper commits
+
+**Previous Session Summary**: 
 - Initial attempts: Fixes for 236B, H7J7, JKF3, and RHX7 caused regression from 331 to 277 tests
 - Recovery: Reverted problematic changes and implemented targeted fixes
 - Progress: Successfully fixed 6CA3, 5U3A, 5TRB, 3GZX, 236B (+9 tests total)
