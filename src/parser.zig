@@ -319,6 +319,13 @@ pub const Parser = struct {
                 self.skipSpaces();
             } else if (ch == '*') {
                 // Alias
+                
+                // Check if there are any properties (anchor or tag) before the alias
+                // Aliases cannot have properties according to YAML spec
+                if (anchor != null or tag != null) {
+                    return error.InvalidAlias;
+                }
+                
                 self.lexer.advanceChar(); // Skip '*'
                 const start = self.lexer.pos;
                 while (!self.lexer.isEOF() and Lexer.isAnchorChar(self.lexer.peek())) {
@@ -1546,6 +1553,39 @@ pub const Parser = struct {
                     try self.pushContext(.BLOCK_KEY);
                     key = try self.parsePlainScalar();
                     self.popContext();
+                    
+                    // Validate that the key doesn't contain invalid anchor+alias patterns
+                    // Pattern like "&anchor *alias" should be invalid because aliases can't have properties
+                    if (key != null and key.?.type == .scalar) {
+                        const scalar_value = key.?.data.scalar.value;
+                        
+                        // Check for pattern "&something *something" - this indicates
+                        // an attempt to add an anchor property to an alias, which is invalid
+                        var i: usize = 0;
+                        var found_anchor = false;
+                        var found_alias = false;
+                        
+                        while (i < scalar_value.len) {
+                            if (scalar_value[i] == '&') {
+                                found_anchor = true;
+                                // Skip to end of anchor name
+                                i += 1;
+                                while (i < scalar_value.len and !std.ascii.isWhitespace(scalar_value[i])) {
+                                    i += 1;
+                                }
+                            } else if (scalar_value[i] == '*') {
+                                if (found_anchor) {
+                                    // Found both anchor and alias in the same key - this is invalid
+                                    return error.InvalidAlias;
+                                }
+                                found_alias = true;
+                                i += 1;
+                            } else {
+                                i += 1;
+                            }
+                        }
+                    }
+                    
                     self.skipSpaces();
                     
                     if (self.lexer.peek() != ':') {
