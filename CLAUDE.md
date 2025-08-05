@@ -377,3 +377,24 @@ echo "foo:\n  bar\ninvalid" | ./zig/zig run debug_test.zig      # 236B case
 - Flow validation: 351 → ~361 tests (87.3% → 89.8%) 
 - Document structure: 361 → ~371 tests (89.8% → 92.3%)
 - Edge cases: 371 → 394 tests (92.3% → 98.0%)
+
+### Lessons Learned from Fix Attempts
+
+**Session Summary (2025)**: Attempted fixes for 236B, H7J7, JKF3, and RHX7 but caused regression from 331 to 277 tests.
+
+**What Went Wrong**:
+1. **Lookahead in parseBlockMapping**: Added position save/restore that broke explicit key parsing (M5DY)
+2. **Overly broad validation**: Changes intended for specific edge cases affected too many valid cases
+3. **parseStream modifications**: Breaking multi-document parsing while trying to fix directive validation
+4. **Not testing incrementally**: Made multiple changes before checking full test suite
+
+**Key Learnings**:
+- Individual test fixes can have cascading effects - always run full test suite after each change
+- Lookahead with position restoration is risky in recursive descent parsers
+- Context-based validation (like `isInKeyContext()`) is more reliable than position-based heuristics
+- Reference implementations are crucial - study them BEFORE attempting fixes
+
+**Successful Patterns**:
+- Using existing parser context (`isInKeyContext()`) for validation worked well
+- Small, targeted fixes are safer than broad changes
+- Git commits after each successful fix help track progress and enable easy reversion
