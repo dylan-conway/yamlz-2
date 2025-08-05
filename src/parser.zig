@@ -51,6 +51,7 @@ pub const ParseError = error{
     InvalidDocumentStructure,
     InconsistentIndentation,
     InvalidValueAfterMapping,
+    SequenceOnSameLineAsMappingKey,
 };
 
 pub const Parser = struct {
@@ -1474,6 +1475,15 @@ pub const Parser = struct {
                         value = try self.parseValue(value_indent);
                     }
                 } else {
+                    // Check specifically for the invalid pattern: "key: - item"
+                    // Block sequences cannot start on the same line as a mapping colon
+                    if (self.lexer.peek() == '-' and 
+                        (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or 
+                         self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or 
+                         self.lexer.peekNext() == 0)) {
+                        return error.SequenceOnSameLineAsMappingKey;
+                    }
+                    
                     value = try self.parseValue(current_indent);
                     
                     // After parsing any value in a mapping, check for invalid nested mapping syntax
