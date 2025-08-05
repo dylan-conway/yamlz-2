@@ -1509,6 +1509,7 @@ pub const Parser = struct {
             return error.InvalidComment;
         }
         
+        
         const node = try self.arena.allocator().create(ast.Node);
         node.* = .{
             .type = .scalar,
