@@ -658,7 +658,7 @@ pub const Parser = struct {
             }
             const indent = temp_pos - line_start;
             
-            // If this line is indented more than the context and contains mapping indicators, it's invalid
+            // Check for invalid multiline patterns
             if (indent > context_indent and temp_pos < self.lexer.input.len and 
                 !Lexer.isLineBreak(self.lexer.input[temp_pos])) {
                 
@@ -672,6 +672,45 @@ pub const Parser = struct {
                         return error.InvalidPlainScalar;
                     }
                     check_pos += 1;
+                }
+                
+                // Check for BF9H pattern: comment interruption followed by continuation
+                // Scan the first continuation line to see if it ends with a comment
+                var line_pos = temp_pos;
+                var found_comment = false;
+                while (line_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[line_pos])) {
+                    if (self.lexer.input[line_pos] == '#' and line_pos > 0 and 
+                        Lexer.isWhitespace(self.lexer.input[line_pos - 1])) {
+                        found_comment = true;
+                        break;
+                    }
+                    line_pos += 1;
+                }
+                
+                // If this line has a comment, check if there are more continuation lines
+                if (found_comment) {
+                    // Skip to end of this line
+                    while (line_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[line_pos])) {
+                        line_pos += 1;
+                    }
+                    // Skip line break
+                    if (line_pos < self.lexer.input.len and Lexer.isLineBreak(self.lexer.input[line_pos])) {
+                        line_pos += 1;
+                    }
+                    
+                    // Check if next line is indented and has content (invalid continuation)
+                    var next_indent: usize = 0;
+                    while (line_pos < self.lexer.input.len and self.lexer.input[line_pos] == ' ') {
+                        line_pos += 1;
+                        next_indent += 1;
+                    }
+                    
+                    if (line_pos < self.lexer.input.len and 
+                        !Lexer.isLineBreak(self.lexer.input[line_pos]) and 
+                        self.lexer.input[line_pos] != '#' and
+                        next_indent > context_indent) {
+                        return error.InvalidPlainScalar;
+                    }
                 }
             }
         }
@@ -848,6 +887,31 @@ pub const Parser = struct {
                         while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
                             self.lexer.advanceChar();
                         }
+                        
+                        // Check if there are continuation lines after this comment
+                        // which would make this invalid
+                        var temp_pos = self.lexer.pos;
+                        // Skip the line break if present
+                        if (temp_pos < self.lexer.input.len and Lexer.isLineBreak(self.lexer.input[temp_pos])) {
+                            temp_pos += 1;
+                        }
+                        
+                        // Check if the next line is indented and would be a continuation
+                        var next_line_spaces: usize = 0;
+                        while (temp_pos < self.lexer.input.len and self.lexer.input[temp_pos] == ' ') {
+                            temp_pos += 1;
+                            next_line_spaces += 1;
+                        }
+                        
+                        // If the next line is indented more than context and has content,
+                        // this is invalid comment interruption (like BF9H test case)
+                        if (temp_pos < self.lexer.input.len and 
+                            !Lexer.isLineBreak(self.lexer.input[temp_pos]) and 
+                            self.lexer.input[temp_pos] != '#' and
+                            next_line_spaces > context_indent) {
+                            return error.InvalidPlainScalar;
+                        }
+                        
                         break;
                     }
                     
