@@ -1363,6 +1363,7 @@ pub const Parser = struct {
         
         var mapping_indent: ?usize = null;
         var pending_explicit_key: ?*ast.Node = null;
+        var processing_explicit_key_value = false;
         
         // Set the mapping context indent for plain scalar validation
         const prev_mapping_context_indent = self.mapping_context_indent;
@@ -1404,6 +1405,7 @@ pub const Parser = struct {
                 if (self.lexer.peek() == ':') {
                     key = pkey;
                     pending_explicit_key = null;
+                    processing_explicit_key_value = true;
                     self.lexer.advanceChar(); // Skip ':'
                     
                     // Check for tabs after colon - they are not allowed as indentation, 
@@ -1603,7 +1605,8 @@ pub const Parser = struct {
                 } else {
                     // Check specifically for the invalid pattern: "key: - item"
                     // Block sequences cannot start on the same line as a mapping colon
-                    if (self.lexer.peek() == '-' and 
+                    // However, this restriction does not apply to explicit keys (? key : - item)
+                    if (!processing_explicit_key_value and self.lexer.peek() == '-' and 
                         (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or 
                          self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or 
                          self.lexer.peekNext() == 0)) {
@@ -1631,6 +1634,7 @@ pub const Parser = struct {
                 }
                 
                 try node.data.mapping.pairs.append(.{ .key = key.?, .value = value.? });
+                processing_explicit_key_value = false; // Reset flag after processing
                 
                 // Always skip to the next line after parsing a mapping pair
                 if (!self.lexer.isEOF()) {
