@@ -50,6 +50,7 @@ pub const ParseError = error{
     InvalidMultilineKey,
     InvalidDocumentStructure,
     InconsistentIndentation,
+    InvalidValueAfterMapping,
 };
 
 pub const Parser = struct {
@@ -1426,6 +1427,24 @@ pub const Parser = struct {
                     self.skipSpaces();
                     
                     if (self.lexer.peek() != ':') {
+                        // In a block mapping, if we parse something that looks like a plain scalar key
+                        // but doesn't have a colon, check if it's actually invalid content
+                        // Only report error if:
+                        // 1. We're at the mapping indent level
+                        // 2. We successfully parsed a non-empty plain scalar
+                        // 3. The scalar is not an anchor/alias/tag indicator
+                        if (mapping_indent != null and current_indent == mapping_indent.? and
+                            key != null and key.?.data.scalar.value.len > 0) {
+                            // Check if this looks like valid YAML content that's just not a key
+                            const scalar_value = key.?.data.scalar.value;
+                            // If it starts with special characters, it might be valid non-key content
+                            if (scalar_value[0] != '&' and scalar_value[0] != '*' and 
+                                scalar_value[0] != '!' and scalar_value[0] != '-' and
+                                scalar_value[0] != '[' and scalar_value[0] != '{') {
+                                // This looks like a plain word that's not a key - invalid
+                                return error.InvalidValueAfterMapping;
+                            }
+                        }
                         self.arena.allocator().destroy(key.?);
                         break;
                     }
