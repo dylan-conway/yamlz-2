@@ -820,6 +820,11 @@ pub const Parser = struct {
         
         // // std.debug.print("Debug parsePlainScalar: parsed '{s}' from pos {} to {}\n", .{value, start_pos, end_pos});
         
+        // In flow context, reject bare '-' as it's a block sequence indicator
+        if (self.isInFlowContext() and std.mem.eql(u8, value, "-")) {
+            return error.InvalidPlainScalar;
+        }
+        
         // Check for special values and convert to canonical form
         if (std.mem.eql(u8, value, "null") or std.mem.eql(u8, value, "Null") or std.mem.eql(u8, value, "NULL") or
             std.mem.eql(u8, value, "~") or std.mem.eql(u8, value, "")) {

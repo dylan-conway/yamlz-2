@@ -1,407 +1,407 @@
-✗ HU3P (expected error, got success)
-✓ 735Y
-✓ 4GC6
-✓ CTN5
-✓ S4GJ
-✓ GH63
-✓ UV7Q
-✓ M5DY
-✓ 3UYS
-✓ TS54
-✓ HMK4
-✓ 8XDJ
-✓ 753E
-✓ TL85
-✓ 7FWL
-✓ 6BCT
-✓ XLQ9
-✓ NAT4
-✓ 98YD
-✗ 4JVG (expected error, got success)
-✓ 2XXW
-✓ M9B4
-✓ MZX3
-✓ RZP5
-✓ 9FMG
-✓ K527
-✓ 2LFX
-✓ M7A3
-✓ R4YG
-✓ SKE5
-✗ 9JBA (expected error, got success)
-✓ AZW3
-✗ HRE5 (expected error, got success)
-✓ 6BFJ
-✓ 3RLN/03
-✓ 3RLN/04
-✓ 3RLN/05
-✓ 3RLN/02
-✓ 3RLN/00
-✓ 3RLN/01
-✓ U9NS
-✓ SYW4
-✓ S9E8
-✗ X4QW (expected error, got success)
-✗ JKF3 (expected error, got success)
-✗ 55WF (expected error, got success)
-✓ 58MP
-✓ T5N4
-✓ 5BVJ
-✓ 35KP
-✓ FRK4
-✓ K4SU
-✓ DK3J
-✓ CC74
-✓ UDR7
-✓ 3MYT
-✗ BF9H (expected error, got success)
-✓ 8G76
-✗ GT5M (expected error, got success)
-✓ 6KGN
-✗ N782 (expected error, got success)
-✓ 6VJK
-✓ 4QFQ
-✓ UKK6/02
-✓ UKK6/00
-✓ UKK6/01
-✓ EW3V
-✓ SBG9
-✓ 8XYN
-✓ K858
-✓ 2EBW
-✓ 52DL
-✓ DK95/03
-✗ DK95/04 (expected success, got error)
-✓ DK95/05
-✓ DK95/02
-✓ DK95/07
-✓ DK95/00
-✓ DK95/08
-✓ DK95/01
-✓ DK95/06
-✓ JQ4R
-✓ CFD4
-✗ ZVH3 (expected error, got success)
-✓ 93WF
-✓ AB8U
-✓ 6JQW
-✓ L24T/00
-✓ L24T/01
-✗ 236B (expected error, got success)
-✓ 96NN/00
-✓ 96NN/01
-✓ 5KJE
-✓ DE56/03
-✓ DE56/04
-✓ DE56/05
-✓ DE56/02
-✓ DE56/00
-✓ DE56/01
-✓ F6MC
-✓ H2RW
-✓ 6JTT
-✓ NB6Z
-✓ PBJ2
-✓ RLU9
-✓ A984
-✓ 9J7A
-✓ NHX8
-✓ 9TFX
-✓ D83L
-✓ LP6E
-✓ LX3P
-✓ 6LVF
-✗ QB6E (expected error, got success)
-✓ 6XDY
-✓ 7BMT
-✓ S7BG
-✓ G4RS
-✓ 4RWC
-✓ 9MMW
-✗ 9BXH (expected success, got error)
-✓ 9KBC
-✓ HM87/00
-✓ HM87/01
-✓ 4MUZ/02
-✓ 4MUZ/00
-✓ 4MUZ/01
-✓ S4T7
-✓ 6ZKB
-✓ 8UDB
-✗ ZL4Z (expected error, got success)
-✓ MYW6
-✓ YD5X
-✓ 652Z
-✗ CVW2 (expected error, got success)
-✗ RHX7 (expected error, got success)
-✓ 9MAG
-✗ H7J7 (expected error, got success)
-✓ T4YY
-✓ 6H3V
-✗ 7A4E (expected success, got error)
-✓ 6PBE
-✗ G9HC (expected error, got success)
-✗ YJV2 (expected error, got success)
-✓ 4WA9
-✓ 4V8U
-✓ W4TN
-✓ 9U5K
-✓ FUP4
-✗ BD7L (expected error, got success)
-✓ F8F9
-✓ EXG3
-✓ 7ZZ5
-✓ Y2GN
-✓ V55R
-✗ 9DXL (expected success, got error)
-✓ 9KAX
-✓ J7PZ
-✓ J7VC
-✗ N4JP (expected error, got success)
-✓ KSS4
-✓ L94M
-✓ H7TQ
-✓ MXS3
-✓ 9SA2
-✓ W5VH
-✓ G992
-✗ 9C9N (expected error, got success)
-✓ S4JQ
-✓ XW4D
-✗ 7TMG (expected success, got error)
-✓ CQ3W
-✓ P94K
-✗ 5LLU (expected error, got success)
-✓ X38W
-✓ 57H4
-✓ DWX9
-✓ PW8X
-✓ PRH3
-✓ 33X3
-✓ 229Q
-✓ J9HZ
-✓ D9TU
-✗ 5TRB (expected error, got success)
-✓ M5C3
-✗ ZXT5 (expected error, got success)
-✓ RR7F
-✓ 3ALJ
-✓ 74H7
-✓ 2G84/03
-✓ 2G84/02
-✗ 2G84/00 (expected error, got success)
-✓ 2G84/01
-✓ M6YH
-✓ ZK9H
-✓ V9D5
-✗ TD5N (expected error, got success)
-✓ J3BT
-✓ 93JH
-✓ SF5V
-✓ F3CP
-✓ RTP8
-✓ K54U
-✓ SSW6
-✗ 7MNF (expected error, got success)
-✓ C4HZ
-✓ L9U5
-✗ KS4U (expected error, got success)
-✓ Q88A
-✓ LQZ7
-✓ 36F6
-✗ DMG6 (expected error, got success)
-✗ QLJ7 (expected error, got success)
-✗ SU74 (expected error, got success)
-✓ C2DT
-✓ K3WX
-✗ 9CWY (expected error, got success)
-✗ U44R (expected error, got success)
-✓ CN3R
-✗ HS5T (expected success, got error)
-✓ 9MQT/00
-✗ 9MQT/01 (expected error, got success)
-✗ 4HVU (expected error, got success)
-✓ M7NX
-✗ GDY7 (expected error, got success)
-✓ EHF6
-✗ B63P (expected error, got success)
-✗ JHB9 (expected success, got error)
-✓ P76L
-✓ Q5MG
-✗ RXY3 (expected error, got success)
-✓ 2AUY
-✓ HWV9
-✓ CML9
-✓ NP9H
-✗ S98Z (expected error, got success)
-✓ JTV5
-✓ KH5V/02
-✓ KH5V/00
-✓ KH5V/01
-✓ 4EJS
-✓ 27NA
-✓ H3Z8
-✓ 565N
-✓ 5TYM
-✓ 82AN
-✗ P2EQ (expected error, got success)
-✓ QT73
-✗ 5WE3 (expected success, got error)
-✓ CPZ3
-✓ WZ62
-✗ BEC7 (expected success, got error)
-✓ 2CMS
-✓ 8CWC
-✓ LE5A
-✗ LHL4 (expected error, got success)
-✗ 62EZ (expected error, got success)
-✗ 3HFZ (expected error, got success)
-✓ 5NYZ
-✓ 3GZX
-✓ 6FWR
-✓ D88J
-✓ MUS6/03
-✓ MUS6/04
-✓ MUS6/05
-✓ MUS6/02
-✗ MUS6/00 (expected error, got success)
-✗ MUS6/01 (expected error, got success)
-✓ MUS6/06
-✗ 6S55 (expected error, got success)
-✓ JS2J
-✓ FTA2
-✓ 2JQS
-✓ 6JWB
-✗ DFF7 (expected success, got error)
-✓ E76Z
-✓ BU8L
-✓ QF4Y
-✗ EB22 (expected error, got success)
-✗ NJ66 (expected success, got error)
-✗ 6CA3 (expected success, got error)
-✓ 4ZYM
-✓ A6F9
-✗ Y79Y/007 (expected error, got success)
-✓ Y79Y/000
-✗ Y79Y/009 (expected error, got success)
-✓ Y79Y/008
-✓ Y79Y/001
-✓ Y79Y/006
-✓ Y79Y/010
-✓ Y79Y/003
-✗ Y79Y/004 (expected error, got success)
-✗ Y79Y/005 (expected error, got success)
-✓ Y79Y/002
-✓ 6WPF
-✓ 7Z25
-✓ 9YRD
-✓ JEF9/02
-✓ JEF9/00
-✓ JEF9/01
-✗ VJP3/00 (expected error, got success)
-✓ VJP3/01
-✓ 7T8X
-✓ UGM3
-✗ W9L4 (expected error, got success)
-✓ 87E4
-✗ U99R (expected error, got success)
-✗ Q4CL (expected error, got success)
-✓ R52L
-✓ FQ7F
-✗ BS4K (expected error, got success)
-✓ 9WXW
-✗ JY7Z (expected error, got success)
-✓ 6CK3
-✓ 4CQQ
-✓ G7JE
-✓ NKF9
-✗ C2SP (expected error, got success)
-✗ 9MMA (expected error, got success)
-✓ CT4Q
-✓ 26DV
-✓ 96L6
-✓ T833
-✓ 8QBE
-✓ J5UC
-✓ Q9WF
-✗ D49Q (expected error, got success)
-✓ 65WH
-✓ MJS9
-✓ FH7J
-✗ 5U3A (expected error, got success)
-✓ U3XV
-✓ 5GBF
-✗ DBG4 (expected success, got error)
-✓ XV9V
-✗ SR86 (expected error, got success)
-✓ W42U
-✓ KK5P
-✓ HMQ5
-✓ SM9W/00
-✓ SM9W/01
-✓ TE2A
-✓ ZH7C
-✓ ZF4X
-✓ Q8AD
-✓ M2N8/00
-✓ M2N8/01
-✓ T26H
-✓ AVM7
-✓ DC7X
-✓ 4FJ6
-✓ 3R3P
-✗ CXX2 (expected error, got success)
-✓ 2SXE
-✗ DK4H (expected error, got success)
-✓ A2M4
-✓ F2C7
-✗ 7LBH (expected error, got success)
-✗ 9HCY (expected error, got success)
-✗ ZWK4 (expected success, got error)
-✓ FBC9
-✗ 7W2P (expected success, got error)
-✗ 8KB6 (expected success, got error)
-✗ UT92 (expected success, got error)
-✓ 8MK2
-✗ G5U8 (expected error, got success)
-✗ 4ABK (expected success, got error)
-✓ P2AD
-✓ JR7V
-✓ U3C3
-✓ S3PD
-✓ 4Q9F
-✗ SY6V (expected error, got success)
-✗ X8DW (expected success, got error)
-✓ UDM2
-✓ KMK3
-✓ DHP8
-✓ 6SLA
-✓ 54T7
-✓ Z67P
-✓ 5MUD
-✓ 4UYU
-✗ ZCZ6 (expected error, got success)
-✓ AZ63
-✓ FP8R
-✓ 5C5M
-✓ L383
-✓ EX5H
-✓ Z9M4
-✓ PUW8
-✗ SU5Z (expected error, got success)
-✗ 4H7K (expected error, got success)
-✓ 6M2F
-✗ 7BUB (expected success, got error)
-✓ M29M
-✓ 5T43
-✓ 6HB6
-✓ 6WLZ
-✓ RZT7
-✓ B3HG
-✓ CUP7
-✓ 9SHH
+✓ yaml-test-suite/HU3P
+✓ yaml-test-suite/735Y
+✓ yaml-test-suite/4GC6
+✓ yaml-test-suite/CTN5
+✓ yaml-test-suite/S4GJ
+✓ yaml-test-suite/GH63
+✗ yaml-test-suite/UV7Q (expected success, got error)
+✓ yaml-test-suite/M5DY
+✓ yaml-test-suite/3UYS
+✓ yaml-test-suite/TS54
+✓ yaml-test-suite/HMK4
+✗ yaml-test-suite/8XDJ (expected error, got success)
+✓ yaml-test-suite/753E
+✓ yaml-test-suite/TL85
+✓ yaml-test-suite/7FWL
+✓ yaml-test-suite/6BCT
+✓ yaml-test-suite/XLQ9
+✓ yaml-test-suite/NAT4
+✓ yaml-test-suite/98YD
+✗ yaml-test-suite/4JVG (expected error, got success)
+✓ yaml-test-suite/2XXW
+✓ yaml-test-suite/M9B4
+✓ yaml-test-suite/MZX3
+✓ yaml-test-suite/RZP5
+✓ yaml-test-suite/9FMG
+✓ yaml-test-suite/K527
+✓ yaml-test-suite/2LFX
+✓ yaml-test-suite/M7A3
+✓ yaml-test-suite/R4YG
+✓ yaml-test-suite/SKE5
+✓ yaml-test-suite/9JBA
+✓ yaml-test-suite/AZW3
+✓ yaml-test-suite/HRE5
+✓ yaml-test-suite/6BFJ
+✓ yaml-test-suite/3RLN/03
+✓ yaml-test-suite/3RLN/04
+✓ yaml-test-suite/3RLN/05
+✓ yaml-test-suite/3RLN/02
+✓ yaml-test-suite/3RLN/00
+✓ yaml-test-suite/3RLN/01
+✓ yaml-test-suite/U9NS
+✓ yaml-test-suite/SYW4
+✓ yaml-test-suite/S9E8
+✓ yaml-test-suite/X4QW
+✗ yaml-test-suite/JKF3 (expected error, got success)
+✓ yaml-test-suite/55WF
+✓ yaml-test-suite/58MP
+✓ yaml-test-suite/T5N4
+✓ yaml-test-suite/5BVJ
+✓ yaml-test-suite/35KP
+✓ yaml-test-suite/FRK4
+✓ yaml-test-suite/K4SU
+✓ yaml-test-suite/DK3J
+✓ yaml-test-suite/CC74
+✓ yaml-test-suite/UDR7
+✓ yaml-test-suite/3MYT
+✗ yaml-test-suite/BF9H (expected error, got success)
+✓ yaml-test-suite/8G76
+✓ yaml-test-suite/GT5M
+✓ yaml-test-suite/6KGN
+✓ yaml-test-suite/N782
+✓ yaml-test-suite/6VJK
+✓ yaml-test-suite/4QFQ
+✓ yaml-test-suite/UKK6/02
+✓ yaml-test-suite/UKK6/00
+✓ yaml-test-suite/UKK6/01
+✓ yaml-test-suite/EW3V
+✓ yaml-test-suite/SBG9
+✓ yaml-test-suite/8XYN
+✓ yaml-test-suite/K858
+✓ yaml-test-suite/2EBW
+✓ yaml-test-suite/52DL
+✓ yaml-test-suite/DK95/03
+✓ yaml-test-suite/DK95/04
+✓ yaml-test-suite/DK95/05
+✓ yaml-test-suite/DK95/02
+✓ yaml-test-suite/DK95/07
+✓ yaml-test-suite/DK95/00
+✓ yaml-test-suite/DK95/08
+✗ yaml-test-suite/DK95/01 (expected error, got success)
+✓ yaml-test-suite/DK95/06
+✓ yaml-test-suite/JQ4R
+✓ yaml-test-suite/CFD4
+✓ yaml-test-suite/ZVH3
+✓ yaml-test-suite/93WF
+✓ yaml-test-suite/AB8U
+✓ yaml-test-suite/6JQW
+✓ yaml-test-suite/L24T/00
+✓ yaml-test-suite/L24T/01
+✗ yaml-test-suite/236B (expected error, got success)
+✓ yaml-test-suite/96NN/00
+✓ yaml-test-suite/96NN/01
+✓ yaml-test-suite/5KJE
+✓ yaml-test-suite/DE56/03
+✓ yaml-test-suite/DE56/04
+✓ yaml-test-suite/DE56/05
+✓ yaml-test-suite/DE56/02
+✓ yaml-test-suite/DE56/00
+✓ yaml-test-suite/DE56/01
+✓ yaml-test-suite/F6MC
+✓ yaml-test-suite/H2RW
+✓ yaml-test-suite/6JTT
+✓ yaml-test-suite/NB6Z
+✓ yaml-test-suite/PBJ2
+✓ yaml-test-suite/RLU9
+✓ yaml-test-suite/A984
+✓ yaml-test-suite/9J7A
+✓ yaml-test-suite/NHX8
+✓ yaml-test-suite/9TFX
+✓ yaml-test-suite/D83L
+✓ yaml-test-suite/LP6E
+✓ yaml-test-suite/LX3P
+✓ yaml-test-suite/6LVF
+✓ yaml-test-suite/QB6E
+✓ yaml-test-suite/6XDY
+✓ yaml-test-suite/7BMT
+✓ yaml-test-suite/S7BG
+✓ yaml-test-suite/G4RS
+✓ yaml-test-suite/4RWC
+✓ yaml-test-suite/9MMW
+✓ yaml-test-suite/9BXH
+✓ yaml-test-suite/9KBC
+✓ yaml-test-suite/HM87/00
+✓ yaml-test-suite/HM87/01
+✓ yaml-test-suite/4MUZ/02
+✓ yaml-test-suite/4MUZ/00
+✓ yaml-test-suite/4MUZ/01
+✓ yaml-test-suite/S4T7
+✓ yaml-test-suite/6ZKB
+✓ yaml-test-suite/8UDB
+✓ yaml-test-suite/ZL4Z
+✓ yaml-test-suite/MYW6
+✓ yaml-test-suite/YD5X
+✓ yaml-test-suite/652Z
+✓ yaml-test-suite/CVW2
+✗ yaml-test-suite/RHX7 (expected error, got success)
+✓ yaml-test-suite/9MAG
+✓ yaml-test-suite/H7J7
+✓ yaml-test-suite/T4YY
+✓ yaml-test-suite/6H3V
+✓ yaml-test-suite/7A4E
+✓ yaml-test-suite/6PBE
+✗ yaml-test-suite/G9HC (expected error, got success)
+✗ yaml-test-suite/YJV2 (expected error, got success)
+✓ yaml-test-suite/4WA9
+✓ yaml-test-suite/4V8U
+✓ yaml-test-suite/W4TN
+✓ yaml-test-suite/9U5K
+✓ yaml-test-suite/FUP4
+✗ yaml-test-suite/BD7L (expected error, got success)
+✓ yaml-test-suite/F8F9
+✓ yaml-test-suite/EXG3
+✓ yaml-test-suite/7ZZ5
+✓ yaml-test-suite/Y2GN
+✓ yaml-test-suite/V55R
+✓ yaml-test-suite/9DXL
+✓ yaml-test-suite/9KAX
+✓ yaml-test-suite/J7PZ
+✓ yaml-test-suite/J7VC
+✗ yaml-test-suite/N4JP (expected error, got success)
+✓ yaml-test-suite/KSS4
+✓ yaml-test-suite/L94M
+✗ yaml-test-suite/H7TQ (expected error, got success)
+✓ yaml-test-suite/MXS3
+✓ yaml-test-suite/9SA2
+✓ yaml-test-suite/W5VH
+✓ yaml-test-suite/G992
+✗ yaml-test-suite/9C9N (expected error, got success)
+✓ yaml-test-suite/S4JQ
+✓ yaml-test-suite/XW4D
+✓ yaml-test-suite/7TMG
+✓ yaml-test-suite/CQ3W
+✓ yaml-test-suite/P94K
+✗ yaml-test-suite/5LLU (expected error, got success)
+✓ yaml-test-suite/X38W
+✓ yaml-test-suite/57H4
+✓ yaml-test-suite/DWX9
+✓ yaml-test-suite/PW8X
+✓ yaml-test-suite/PRH3
+✓ yaml-test-suite/33X3
+✓ yaml-test-suite/229Q
+✓ yaml-test-suite/J9HZ
+✓ yaml-test-suite/D9TU
+✗ yaml-test-suite/5TRB (expected error, got success)
+✓ yaml-test-suite/M5C3
+✗ yaml-test-suite/ZXT5 (expected error, got success)
+✓ yaml-test-suite/RR7F
+✓ yaml-test-suite/3ALJ
+✓ yaml-test-suite/74H7
+✓ yaml-test-suite/2G84/03
+✓ yaml-test-suite/2G84/02
+✗ yaml-test-suite/2G84/00 (expected error, got success)
+✓ yaml-test-suite/2G84/01
+✗ yaml-test-suite/M6YH (expected success, got error)
+✓ yaml-test-suite/ZK9H
+✓ yaml-test-suite/V9D5
+✗ yaml-test-suite/TD5N (expected error, got success)
+✗ yaml-test-suite/J3BT (expected success, got error)
+✓ yaml-test-suite/93JH
+✗ yaml-test-suite/SF5V (expected error, got success)
+✓ yaml-test-suite/F3CP
+✓ yaml-test-suite/RTP8
+✓ yaml-test-suite/K54U
+✓ yaml-test-suite/SSW6
+✗ yaml-test-suite/7MNF (expected error, got success)
+✓ yaml-test-suite/C4HZ
+✓ yaml-test-suite/L9U5
+✗ yaml-test-suite/KS4U (expected error, got success)
+✓ yaml-test-suite/Q88A
+✓ yaml-test-suite/LQZ7
+✓ yaml-test-suite/36F6
+✗ yaml-test-suite/DMG6 (expected error, got success)
+✗ yaml-test-suite/QLJ7 (expected error, got success)
+✗ yaml-test-suite/SU74 (expected error, got success)
+✓ yaml-test-suite/C2DT
+✓ yaml-test-suite/K3WX
+✗ yaml-test-suite/9CWY (expected error, got success)
+✗ yaml-test-suite/U44R (expected error, got success)
+✓ yaml-test-suite/CN3R
+✗ yaml-test-suite/HS5T (expected success, got error)
+✓ yaml-test-suite/9MQT/00
+✗ yaml-test-suite/9MQT/01 (expected error, got success)
+✗ yaml-test-suite/4HVU (expected error, got success)
+✓ yaml-test-suite/M7NX
+✗ yaml-test-suite/GDY7 (expected error, got success)
+✓ yaml-test-suite/EHF6
+✗ yaml-test-suite/B63P (expected error, got success)
+✓ yaml-test-suite/JHB9
+✓ yaml-test-suite/P76L
+✓ yaml-test-suite/Q5MG
+✗ yaml-test-suite/RXY3 (expected error, got success)
+✓ yaml-test-suite/2AUY
+✓ yaml-test-suite/HWV9
+✓ yaml-test-suite/CML9
+✓ yaml-test-suite/NP9H
+✗ yaml-test-suite/S98Z (expected error, got success)
+✓ yaml-test-suite/JTV5
+✓ yaml-test-suite/KH5V/02
+✓ yaml-test-suite/KH5V/00
+✓ yaml-test-suite/KH5V/01
+✓ yaml-test-suite/4EJS
+✓ yaml-test-suite/27NA
+✓ yaml-test-suite/H3Z8
+✓ yaml-test-suite/565N
+✓ yaml-test-suite/5TYM
+✓ yaml-test-suite/82AN
+✗ yaml-test-suite/P2EQ (expected error, got success)
+✓ yaml-test-suite/QT73
+✓ yaml-test-suite/5WE3
+✓ yaml-test-suite/CPZ3
+✓ yaml-test-suite/WZ62
+✓ yaml-test-suite/BEC7
+✓ yaml-test-suite/2CMS
+✓ yaml-test-suite/8CWC
+✓ yaml-test-suite/LE5A
+✗ yaml-test-suite/LHL4 (expected error, got success)
+✗ yaml-test-suite/62EZ (expected error, got success)
+✗ yaml-test-suite/3HFZ (expected error, got success)
+✓ yaml-test-suite/5NYZ
+✗ yaml-test-suite/3GZX (expected success, got error)
+✓ yaml-test-suite/6FWR
+✓ yaml-test-suite/D88J
+✓ yaml-test-suite/MUS6/03
+✓ yaml-test-suite/MUS6/04
+✓ yaml-test-suite/MUS6/05
+✓ yaml-test-suite/MUS6/02
+✗ yaml-test-suite/MUS6/00 (expected error, got success)
+✗ yaml-test-suite/MUS6/01 (expected error, got success)
+✓ yaml-test-suite/MUS6/06
+✗ yaml-test-suite/6S55 (expected error, got success)
+✓ yaml-test-suite/JS2J
+✓ yaml-test-suite/FTA2
+✓ yaml-test-suite/2JQS
+✓ yaml-test-suite/6JWB
+✓ yaml-test-suite/DFF7
+✗ yaml-test-suite/E76Z (expected success, got error)
+✓ yaml-test-suite/BU8L
+✓ yaml-test-suite/QF4Y
+✗ yaml-test-suite/EB22 (expected error, got success)
+✓ yaml-test-suite/NJ66
+✗ yaml-test-suite/6CA3 (expected success, got error)
+✓ yaml-test-suite/4ZYM
+✓ yaml-test-suite/A6F9
+✓ yaml-test-suite/Y79Y/007
+✓ yaml-test-suite/Y79Y/000
+✓ yaml-test-suite/Y79Y/009
+✓ yaml-test-suite/Y79Y/008
+✓ yaml-test-suite/Y79Y/001
+✓ yaml-test-suite/Y79Y/006
+✓ yaml-test-suite/Y79Y/010
+✓ yaml-test-suite/Y79Y/003
+✓ yaml-test-suite/Y79Y/004
+✓ yaml-test-suite/Y79Y/005
+✓ yaml-test-suite/Y79Y/002
+✓ yaml-test-suite/6WPF
+✓ yaml-test-suite/7Z25
+✓ yaml-test-suite/9YRD
+✓ yaml-test-suite/JEF9/02
+✓ yaml-test-suite/JEF9/00
+✓ yaml-test-suite/JEF9/01
+✓ yaml-test-suite/VJP3/00
+✗ yaml-test-suite/VJP3/01 (expected success, got error)
+✓ yaml-test-suite/7T8X
+✓ yaml-test-suite/UGM3
+✗ yaml-test-suite/W9L4 (expected error, got success)
+✓ yaml-test-suite/87E4
+✗ yaml-test-suite/U99R (expected error, got success)
+✗ yaml-test-suite/Q4CL (expected error, got success)
+✓ yaml-test-suite/R52L
+✓ yaml-test-suite/FQ7F
+✗ yaml-test-suite/BS4K (expected error, got success)
+✓ yaml-test-suite/9WXW
+✗ yaml-test-suite/JY7Z (expected error, got success)
+✓ yaml-test-suite/6CK3
+✓ yaml-test-suite/4CQQ
+✓ yaml-test-suite/G7JE
+✓ yaml-test-suite/NKF9
+✗ yaml-test-suite/C2SP (expected error, got success)
+✗ yaml-test-suite/9MMA (expected error, got success)
+✓ yaml-test-suite/CT4Q
+✓ yaml-test-suite/26DV
+✓ yaml-test-suite/96L6
+✓ yaml-test-suite/T833
+✓ yaml-test-suite/8QBE
+✓ yaml-test-suite/J5UC
+✓ yaml-test-suite/Q9WF
+✗ yaml-test-suite/D49Q (expected error, got success)
+✓ yaml-test-suite/65WH
+✓ yaml-test-suite/MJS9
+✗ yaml-test-suite/FH7J (expected success, got error)
+✗ yaml-test-suite/5U3A (expected error, got success)
+✓ yaml-test-suite/U3XV
+✓ yaml-test-suite/5GBF
+✓ yaml-test-suite/DBG4
+✓ yaml-test-suite/XV9V
+✗ yaml-test-suite/SR86 (expected error, got success)
+✓ yaml-test-suite/W42U
+✓ yaml-test-suite/KK5P
+✓ yaml-test-suite/HMQ5
+✓ yaml-test-suite/SM9W/00
+✓ yaml-test-suite/SM9W/01
+✓ yaml-test-suite/TE2A
+✓ yaml-test-suite/ZH7C
+✗ yaml-test-suite/ZF4X (expected success, got error)
+✓ yaml-test-suite/Q8AD
+✓ yaml-test-suite/M2N8/00
+✓ yaml-test-suite/M2N8/01
+✓ yaml-test-suite/T26H
+✓ yaml-test-suite/AVM7
+✗ yaml-test-suite/DC7X (expected success, got error)
+✓ yaml-test-suite/4FJ6
+✓ yaml-test-suite/3R3P
+✗ yaml-test-suite/CXX2 (expected error, got success)
+✗ yaml-test-suite/2SXE (expected success, got error)
+✗ yaml-test-suite/DK4H (expected error, got success)
+✓ yaml-test-suite/A2M4
+✓ yaml-test-suite/F2C7
+✗ yaml-test-suite/7LBH (expected error, got success)
+✗ yaml-test-suite/9HCY (expected error, got success)
+✓ yaml-test-suite/ZWK4
+✓ yaml-test-suite/FBC9
+✓ yaml-test-suite/7W2P
+✓ yaml-test-suite/8KB6
+✗ yaml-test-suite/UT92 (expected success, got error)
+✓ yaml-test-suite/8MK2
+✗ yaml-test-suite/G5U8 (expected error, got success)
+✓ yaml-test-suite/4ABK
+✓ yaml-test-suite/P2AD
+✓ yaml-test-suite/JR7V
+✓ yaml-test-suite/U3C3
+✓ yaml-test-suite/S3PD
+✓ yaml-test-suite/4Q9F
+✗ yaml-test-suite/SY6V (expected error, got success)
+✓ yaml-test-suite/X8DW
+✓ yaml-test-suite/UDM2
+✓ yaml-test-suite/KMK3
+✓ yaml-test-suite/DHP8
+✓ yaml-test-suite/6SLA
+✓ yaml-test-suite/54T7
+✓ yaml-test-suite/Z67P
+✓ yaml-test-suite/5MUD
+✓ yaml-test-suite/4UYU
+✗ yaml-test-suite/ZCZ6 (expected error, got success)
+✓ yaml-test-suite/AZ63
+✓ yaml-test-suite/FP8R
+✓ yaml-test-suite/5C5M
+✓ yaml-test-suite/L383
+✓ yaml-test-suite/EX5H
+✓ yaml-test-suite/Z9M4
+✓ yaml-test-suite/PUW8
+✓ yaml-test-suite/SU5Z
+✓ yaml-test-suite/4H7K
+✗ yaml-test-suite/6M2F (expected success, got error)
+✓ yaml-test-suite/7BUB
+✓ yaml-test-suite/M29M
+✓ yaml-test-suite/5T43
+✓ yaml-test-suite/6HB6
+✓ yaml-test-suite/6WLZ
+✓ yaml-test-suite/RZT7
+✓ yaml-test-suite/B3HG
+✓ yaml-test-suite/CUP7
+✓ yaml-test-suite/9SHH
 === YAML Test Suite Results ===
 Parser: zig
 Total tests: 402
-Passing: 310 (77.1%)
-Failing: 92
+Passing: 331 (82.3%)
+Failing: 71
