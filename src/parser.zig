@@ -1303,6 +1303,11 @@ pub const Parser = struct {
         defer self.mapping_context_indent = prev_mapping_context_indent;
         
         while (!self.lexer.isEOF()) {
+            // Check for document markers - block mappings should stop at document boundaries
+            if (self.isAtDocumentMarker()) {
+                break;
+            }
+            
             // Check for tabs before doing any indentation calculations
             try self.checkIndentationForTabs();
             
@@ -2257,6 +2262,23 @@ pub const Parser = struct {
         }
     }
     
+    fn skipWhitespaceAndCommentsButNotDocumentMarkers(self: *Parser) void {
+        while (!self.lexer.isEOF()) {
+            if (self.lexer.match("---") or self.lexer.match("...")) {
+                break;
+            } else if (Lexer.isWhitespace(self.lexer.peek())) {
+                self.lexer.skipWhitespace();
+            } else if (self.lexer.peek() == '#') {
+                self.lexer.skipToEndOfLine();
+                _ = self.lexer.skipLineBreak();
+            } else if (Lexer.isLineBreak(self.lexer.peek())) {
+                _ = self.lexer.skipLineBreak();
+            } else {
+                break;
+            }
+        }
+    }
+    
     fn skipWhitespaceAndCommentsInFlow(self: *Parser) ParseError!void {
         while (!self.lexer.isEOF()) {
             // At start of line in flow context, tabs are not allowed as indentation
@@ -2494,6 +2516,14 @@ pub const Parser = struct {
             self.anchors.clearRetainingCapacity();
             self.tag_handles.clearRetainingCapacity();
             
+            // Reset parser state for new document
+            self.in_flow_context = false;
+            self.parsing_explicit_key = false;
+            self.mapping_context_indent = null;
+            self.parsing_block_sequence_entry = false;
+            self.context = .BLOCK_OUT;
+            self.context_stack.clearRetainingCapacity();
+            
             // Parse directives if this is an explicit document
             if (has_explicit_start) {
                 // TODO: Parse directives like %YAML, %TAG if present
@@ -2534,13 +2564,13 @@ pub const Parser = struct {
             
             try stream.addDocument(document);
             
-            // Skip whitespace and look for document end marker
-            self.skipWhitespaceAndComments();
-            
+            // Check for document end marker first
             if (self.lexer.match("...")) {
                 self.skipDocumentSeparator();
-                self.skipWhitespaceAndComments();
             }
+            
+            // Skip whitespace and comments but preserve document markers
+            self.skipWhitespaceAndCommentsButNotDocumentMarkers();
             
             // If we're at another document marker or EOF, continue
             if (self.lexer.isEOF() or self.isAtDocumentMarker()) {

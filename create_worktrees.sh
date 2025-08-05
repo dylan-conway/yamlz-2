@@ -25,6 +25,18 @@ while read test_name; do
     if [ ! -d "$worktree_path" ]; then
         git worktree add "$worktree_path" "$branch_name"
         echo "  Created worktree at $worktree_path on branch $branch_name"
+        
+        # Create symlinks to required directories
+        cd "$worktree_path"
+        ln -sf ../../yaml-test-suite yaml-test-suite
+        ln -sf ../../yaml-rs yaml-rs  
+        ln -sf ../../yaml-ts yaml-ts
+        ln -sf ../../zig zig
+        ln -sf ../../yaml-rs-test yaml-rs-test
+        ln -sf ../../yaml-spec-compressed.md yaml-spec-compressed.md
+        ln -sf ../../yaml-spec.md yaml-spec.md
+        cd - > /dev/null
+        echo "  Created symlinks to shared resources"
     else
         echo "  Worktree already exists at $worktree_path"
     fi
