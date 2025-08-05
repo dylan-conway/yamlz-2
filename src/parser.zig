@@ -43,6 +43,7 @@ pub const ParseError = error{
     ExpectedCommaOrBrace,
     ExpectedColonOrComma,
     DuplicateAnchor,
+    InvalidContent,
     InvalidComment,
     InvalidDocumentMarker,
     InvalidNestedMapping,
@@ -1172,6 +1173,35 @@ pub const Parser = struct {
                 // (multiline scalars may have already consumed multiple lines)
                 if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
                     self.skipToNextLine();
+                }
+                
+                // After processing an item, check if there's a floating anchor on the next line
+                if (!self.lexer.isEOF()) {
+                    // Skip past newlines to get to the next content line
+                    const save_pos = self.lexer.pos;
+                    const save_line = self.lexer.line;
+                    const save_column = self.lexer.column;
+                    
+                    while (!self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek())) {
+                        self.lexer.advanceChar();
+                    }
+                    
+                    // Now check if we're at the sequence indent level with an anchor/tag
+                    if (!self.lexer.isEOF()) {
+                        const check_indent = self.getCurrentIndent();
+                        if (check_indent == (sequence_indent orelse min_indent)) {
+                            const ch = self.lexer.peek();
+                            if (ch == '&' or ch == '!') {
+                                // This is a floating anchor/tag - error!
+                                return error.InvalidAnchor;
+                            }
+                        }
+                    }
+                    
+                    // Restore position for the main loop to process properly
+                    self.lexer.pos = save_pos;
+                    self.lexer.line = save_line;
+                    self.lexer.column = save_column;
                 }
             } else {
                 // We're not at a valid sequence item position
@@ -2377,17 +2407,13 @@ pub const Parser = struct {
                     
                     // After parsing the root value, check for unexpected content
                     self.skipWhitespaceAndComments();
-                    // std.debug.print("DEBUG 236B: After parsing root, EOF={}, peek='{}' ({})\n", .{self.lexer.isEOF(), self.lexer.peek(), self.lexer.peek()});
+                    // After parsing root value, check if there's unexpected content
                     if (!self.lexer.isEOF() and !self.isAtDocumentMarker()) {
                         const ch = self.lexer.peek();
                         // Check for extra flow collection delimiters
                         if (ch == ']' or ch == '}') {
                             return error.UnexpectedCharacter;
                         }
-                        // We already checked for document markers above in isAtDocumentMarker()
-                        // so any remaining content is invalid
-                        // This catches cases like 236B where "invalid" appears at wrong indentation
-                        // But skip this check for now as it's causing regressions
                     }
                     
                     break; // Only parse one value per document
