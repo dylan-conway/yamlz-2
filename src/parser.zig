@@ -1295,9 +1295,20 @@ pub const Parser = struct {
                     pending_explicit_key = null;
                     self.lexer.advanceChar(); // Skip ':'
                     
-                    // Check for tabs after colon - they are not allowed
+                    // Check for tabs after colon - they are not allowed as indentation, 
+                    // but they are allowed as trailing whitespace (before line break or EOF)
                     if (self.lexer.peek() == '\t') {
-                        return error.TabsNotAllowed;
+                        // Look ahead to see if this tab is trailing whitespace
+                        var check_pos = self.lexer.pos;
+                        while (check_pos < self.lexer.input.len and self.lexer.input[check_pos] == '\t') {
+                            check_pos += 1;
+                        }
+                        // If tab is followed by line break or EOF, it's trailing whitespace (allowed)
+                        // If tab is followed by content, it's indentation (not allowed)
+                        if (check_pos < self.lexer.input.len and 
+                            !Lexer.isLineBreak(self.lexer.input[check_pos])) {
+                            return error.TabsNotAllowed;
+                        }
                     }
                 } else {
                     // No colon found after explicit key - this means the key has no value (null)
@@ -1448,9 +1459,20 @@ pub const Parser = struct {
                     }
                     self.lexer.advanceChar();
                     
-                    // Check for tabs after colon - they are not allowed
+                    // Check for tabs after colon - they are not allowed as indentation, 
+                    // but they are allowed as trailing whitespace (before line break or EOF)
                     if (self.lexer.peek() == '\t') {
-                        return error.TabsNotAllowed;
+                        // Look ahead to see if this tab is trailing whitespace
+                        var check_pos = self.lexer.pos;
+                        while (check_pos < self.lexer.input.len and self.lexer.input[check_pos] == '\t') {
+                            check_pos += 1;
+                        }
+                        // If tab is followed by line break or EOF, it's trailing whitespace (allowed)
+                        // If tab is followed by content, it's indentation (not allowed)
+                        if (check_pos < self.lexer.input.len and 
+                            !Lexer.isLineBreak(self.lexer.input[check_pos])) {
+                            return error.TabsNotAllowed;
+                        }
                     }
                 }
             }
@@ -2335,7 +2357,6 @@ pub const Parser = struct {
             return;
         }
         
-        
         const save_pos = self.lexer.pos;
         const save_line = self.lexer.line;
         const save_column = self.lexer.column;
@@ -2343,35 +2364,21 @@ pub const Parser = struct {
         self.lexer.pos = self.lexer.line_start;
         self.lexer.column = 1;
         
-        // Check for tabs only in the leading whitespace (indentation) before content
+        // Check for tabs only in the leading whitespace (indentation) before any content
+        // Once we hit any non-whitespace character, we stop checking
         while (self.lexer.pos < self.lexer.input.len) {
             const ch = self.lexer.peek();
             if (ch == ' ') {
                 self.lexer.advanceChar();
             } else if (ch == '\t') {
-                // Check if there's any non-whitespace content after this tab on the same line
-                var has_content = false;
-                var check_pos = self.lexer.pos + 1;
-                while (check_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[check_pos])) {
-                    if (!Lexer.isWhitespace(self.lexer.input[check_pos])) {
-                        has_content = true;
-                        break;
-                    }
-                    check_pos += 1;
-                }
-                
-                if (has_content) {
-                    // Tab is used as indentation before content - not allowed
-                    self.lexer.pos = save_pos;
-                    self.lexer.line = save_line;
-                    self.lexer.column = save_column;
-                    return error.TabsNotAllowed;
-                }
-                
-                // Tab is on a whitespace-only portion, keep checking
-                self.lexer.advanceChar();
+                // Tab in indentation is not allowed
+                self.lexer.pos = save_pos;
+                self.lexer.line = save_line;
+                self.lexer.column = save_column;
+                return error.TabsNotAllowed;
             } else {
-                // We've reached non-whitespace, stop checking
+                // We've reached non-whitespace content, stop checking
+                // Tabs after content (trailing tabs) are allowed
                 break;
             }
         }
