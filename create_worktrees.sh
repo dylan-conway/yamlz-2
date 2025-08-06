@@ -1,52 +1,21 @@
-#!/bin/bash
+#\!/bin/bash
+FAILING_TESTS=(2SXE 3HFZ 4HVU 4JVG 5LLU 62EZ 6M2F 6S55 7LBH 7MNF 9C9N 9CWY 9HCY 9MMA B63P BD7L BS4K C2SP CXX2 D49Q DK4H DK95 DMG6 E76Z EB22 FH7J G9HC H7TQ J3BT JKF3 JY7Z KS4U LHL4 M6YH MUS6 N4JP P2EQ Q4CL QLJ7 RXY3 S98Z SF5V SY6V TD5N U44R U99R UT92 UV7Q VJP3 W9L4 ZCZ6 ZF4X ZXT5)
 
-# Create a worktrees directory if it doesn't exist
 mkdir -p worktrees
 
-# Read failing tests and create worktrees
-while read test_name; do
-    # Skip empty lines
-    if [ -z "$test_name" ]; then
-        continue
-    fi
+for test in "${FAILING_TESTS[@]}"; do
+    echo "Creating worktree for $test..."
+    git worktree add "worktrees/$test" -b "fix-$test" 2>/dev/null || git worktree add "worktrees/$test" "fix-$test" 2>/dev/null || true
     
-    # Replace slash with dash for branch name (for subtests like 2G84/00)
-    branch_name="fix-${test_name//\//-}"
-    worktree_path="worktrees/$test_name"
-    
-    echo "Creating worktree for test $test_name..."
-    
-    # Create branch if it doesn't exist
-    if ! git show-ref --verify --quiet "refs/heads/$branch_name"; then
-        git branch "$branch_name"
-    fi
-    
-    # Create worktree
-    if [ ! -d "$worktree_path" ]; then
-        git worktree add "$worktree_path" "$branch_name"
-        echo "  Created worktree at $worktree_path on branch $branch_name"
-        
-        # Create symlinks to required directories
-        cd "$worktree_path"
-        ln -sf ../../yaml-test-suite yaml-test-suite
-        ln -sf ../../yaml-rs yaml-rs  
-        ln -sf ../../yaml-ts yaml-ts
-        ln -sf ../../zig zig
-        ln -sf ../../yaml-rs-test yaml-rs-test
-        ln -sf ../../yaml-spec-compressed.md yaml-spec-compressed.md
-        ln -sf ../../yaml-spec.md yaml-spec.md
-        cd - > /dev/null
-        echo "  Created symlinks to shared resources"
-    else
-        echo "  Worktree already exists at $worktree_path"
-    fi
-done < failing_tests.txt
+    # Create symlinks
+    cd "worktrees/$test"
+    ln -sf ../../yaml-rs yaml-rs 2>/dev/null
+    ln -sf ../../yaml-ts yaml-ts 2>/dev/null
+    ln -sf ../../yaml-test-suite yaml-test-suite 2>/dev/null
+    ln -sf ../../zig zig 2>/dev/null
+    ln -sf ../../yaml-rs-test yaml-rs-test 2>/dev/null
+    ln -sf ../../yaml-spec-compressed.md yaml-spec-compressed.md 2>/dev/null
+    cd ../..
+done
 
-echo ""
-echo "Created worktrees for all failing tests in worktrees/ directory"
-echo "To work on a test, cd to worktrees/<test_name>"
-echo ""
-echo "Summary:"
-git worktree list | head -20
-echo "..."
-echo "Total worktrees: $(git worktree list | wc -l)"
+echo "Created ${#FAILING_TESTS[@]} worktrees"
