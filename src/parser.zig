@@ -2267,14 +2267,41 @@ pub const Parser = struct {
         else blk: {
             // Auto-detect indent
             const current_pos = self.lexer.pos;
-            while (!self.lexer.isEOF() and (self.lexer.peek() == ' ' or Lexer.isLineBreak(self.lexer.peek()))) {
-                if (self.lexer.peek() == ' ') {
+            var max_empty_line_indent: usize = 0;
+            var content_indent: ?usize = null;
+            
+            while (!self.lexer.isEOF()) {
+                var line_indent: usize = 0;
+                
+                // Count indentation on this line
+                while (!self.lexer.isEOF() and self.lexer.peek() == ' ') {
+                    line_indent += 1;
                     self.lexer.advanceChar();
+                }
+                
+                if (self.lexer.isEOF() or Lexer.isLineBreak(self.lexer.peek())) {
+                    // Empty line - track maximum empty line indentation
+                    max_empty_line_indent = @max(max_empty_line_indent, line_indent);
+                    if (!self.lexer.isEOF()) {
+                        _ = self.lexer.skipLineBreak();
+                    }
                 } else {
-                    _ = self.lexer.skipLineBreak();
+                    // Content line found
+                    content_indent = line_indent;
+                    break;
                 }
             }
-            const detected_indent = self.getCurrentIndent();
+            
+            const detected_indent = content_indent orelse 0;
+            
+            // Check for ambiguous indentation (YAML spec requirement)
+            if (content_indent != null and max_empty_line_indent > detected_indent) {
+                // There were empty lines with more indentation than the first content line
+                // This requires an explicit indentation indicator
+                self.lexer.pos = current_pos;
+                return error.InvalidBlockScalar;
+            }
+            
             self.lexer.pos = current_pos;
             break :blk detected_indent;
         };
