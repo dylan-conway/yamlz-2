@@ -2270,11 +2270,26 @@ pub const Parser = struct {
                 continue;
             }
             
-            // Skip indent
-            if (line_indent >= block_indent) {
+            // Skip indent - only count leading spaces for block indentation  
+            const spaces_count = blk: {
+                var count: usize = 0;
+                var check_pos = self.lexer.pos;
+                while (check_pos < self.lexer.input.len and self.lexer.input[check_pos] == ' ') {
+                    count += 1;
+                    check_pos += 1;
+                }
+                break :blk count;
+            };
+            
+            if (spaces_count >= block_indent) {
+                // Skip exactly block_indent spaces
                 var i: usize = 0;
                 while (i < block_indent) : (i += 1) {
-                    if (self.lexer.peek() == ' ') self.lexer.advanceChar();
+                    if (self.lexer.peek() == ' ') {
+                        self.lexer.advanceChar();
+                    } else {
+                        break; // Should not happen if spaces_count >= block_indent
+                    }
                 }
                 
                 // Add trailing breaks if we had content
@@ -2286,13 +2301,6 @@ pub const Parser = struct {
                 }
                 trailing_breaks = 0;
                 had_content = true;
-                
-                // Copy line content preserving extra indentation
-                const extra_indent = line_indent - block_indent;
-                var k: usize = 0;
-                while (k < extra_indent) : (k += 1) {
-                    try result.append(' ');
-                }
                 
                 
                 while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
@@ -2658,7 +2666,8 @@ pub const Parser = struct {
         self.lexer.column = 1;
         
         var indent: usize = 0;
-        while (self.lexer.pos < save_pos) {
+        // Continue until we hit a non-whitespace character or reach the end of the line
+        while (self.lexer.pos < self.lexer.input.len) {
             const ch = self.lexer.peek();
             if (ch == ' ') {
                 indent += 1;
