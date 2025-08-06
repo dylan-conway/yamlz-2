@@ -540,7 +540,46 @@ pub const Parser = struct {
                     node = try self.parseDoubleQuotedScalar();
                 }
         } else if (ch == '\'') {
-            node = try self.parseSingleQuotedScalar();
+            // Check if this single quoted scalar might be a mapping key
+            // We need to parse it and see if it's followed by a colon
+            if (!self.in_flow_context) {
+                const save_pos = self.lexer.pos;
+                const save_line = self.lexer.line;
+                const save_column = self.lexer.column;
+                const start_line = self.lexer.line;
+                
+                // Parse the single quoted scalar to check what follows
+                const temp_scalar = try self.parseSingleQuotedScalar();
+                const end_line = self.lexer.line;
+                
+                // Skip spaces to see if there's a colon
+                self.skipSpaces();
+                
+                const is_mapping_key = self.lexer.peek() == ':' and 
+                    (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or 
+                     self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0);
+                
+                // Restore position
+                self.lexer.pos = save_pos;
+                self.lexer.line = save_line;
+                self.lexer.column = save_column;
+                self.arena.allocator().destroy(temp_scalar);
+                
+                if (is_mapping_key) {
+                    // Check if the key spans multiple lines - this is invalid for implicit keys
+                    if (end_line > start_line) {
+                        return error.InvalidMultilineKey;
+                    }
+                    
+                    // This is a mapping - restore position and let parseBlockMapping handle it
+                    // This ensures all pairs in the mapping are parsed, not just the first one
+                    node = try self.parseBlockMapping(min_indent);
+                } else {
+                    node = try self.parseSingleQuotedScalar();
+                }
+            } else {
+                node = try self.parseSingleQuotedScalar();
+            }
         } else if (ch == '|') {
             node = try self.parseLiteralScalar();
         } else if (ch == '>') {
@@ -1647,10 +1686,32 @@ pub const Parser = struct {
                         continue;
                     }
                 } else {
-                    // Implicit key
+                    // Implicit key - can be plain, single quoted, or double quoted scalar
                     // Push BLOCK_KEY context for implicit key parsing
                     try self.pushContext(.BLOCK_KEY);
-                    key = try self.parsePlainScalar();
+                    
+                    // Record starting line to detect multiline keys
+                    const start_line = self.lexer.line;
+                    
+                    // Parse the key - could be any scalar type
+                    const ch = self.lexer.peek();
+                    if (ch == '"') {
+                        key = try self.parseDoubleQuotedScalar();
+                    } else if (ch == '\'') {
+                        key = try self.parseSingleQuotedScalar();
+                    } else {
+                        key = try self.parsePlainScalar();
+                    }
+                    
+                    // Check if the key spans multiple lines - this is invalid for implicit keys
+                    if (self.lexer.line > start_line) {
+                        if (key != null) {
+                            self.arena.allocator().destroy(key.?);
+                        }
+                        self.popContext();
+                        return error.InvalidMultilineKey;
+                    }
+                    
                     self.popContext();
                     
                     // Validate that the key doesn't contain invalid anchor+alias patterns
