@@ -1590,6 +1590,43 @@ pub const Parser = struct {
                 }
             } else {
                 if (current_indent < min_indent) {
+                    // Check if this is inconsistent indentation (DMG6 case)
+                    // Only check if we have an established mapping indent and the current line
+                    // appears to be at wrong indentation
+                    if (mapping_indent) |map_indent| {
+                        // The specific pattern we're catching:
+                        // - mapping_indent is established (e.g., 2)
+                        // - current_indent is positive but less than both min_indent and mapping_indent
+                        // - current_indent is exactly mapping_indent - 1 (the problematic case)
+                        // This catches "wrong: 2" at indent 1 when mapping is at indent 2
+                        if (current_indent == map_indent - 1 and
+                            current_indent > 0 and
+                            self.lexer.peek() != '-' and self.lexer.peek() != 0 and 
+                            !self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
+                            // Check if this looks like a mapping key
+                            const save_pos = self.lexer.pos;
+                            const save_line = self.lexer.line;
+                            const save_column = self.lexer.column;
+                            
+                            // Skip to see if there's a colon that would make this a mapping
+                            while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and 
+                                   self.lexer.peek() != ':') {
+                                self.lexer.advanceChar();
+                            }
+                            
+                            if (self.lexer.peek() == ':' and 
+                                (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or 
+                                 self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
+                                // This is a mapping key at wrong indentation
+                                return error.WrongIndentation;
+                            }
+                            
+                            // Restore position
+                            self.lexer.pos = save_pos;
+                            self.lexer.line = save_line;
+                            self.lexer.column = save_column;
+                        }
+                    }
                     break;
                 }
                 
