@@ -2622,8 +2622,30 @@ pub const Parser = struct {
                     }
                     break;
                 } else {
-                    // Invalid content after document marker on the same line
-                    return error.InvalidDocumentStructure;
+                    // Check for specific invalid patterns after document marker
+                    // Reject anchors followed by mapping on the same line
+                    if (ch == '&') {
+                        const save_pos = self.lexer.pos;
+                        var found_colon = false;
+                        
+                        // Look ahead to see if there's a colon on the same line (indicating a mapping)
+                        while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
+                            if (self.lexer.peek() == ':' and (self.lexer.pos + 1 >= self.lexer.input.len or 
+                                Lexer.isWhitespace(self.lexer.input[self.lexer.pos + 1]) or 
+                                Lexer.isLineBreak(self.lexer.input[self.lexer.pos + 1]))) {
+                                found_colon = true;
+                                break;
+                            }
+                            self.lexer.advanceChar();
+                        }
+                        
+                        self.lexer.pos = save_pos; // Restore position
+                        
+                        if (found_colon) {
+                            return error.InvalidDocumentStructure;
+                        }
+                    }
+                    break;
                 }
             }
         }
