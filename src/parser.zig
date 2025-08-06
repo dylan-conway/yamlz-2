@@ -2706,6 +2706,7 @@ pub const Parser = struct {
             }
             
             // Parse directives and content
+            var has_directives = false;
             while (!self.lexer.isEOF() and !self.isAtDocumentMarker()) {
                 // std.debug.print("RHX7 DEBUG: char='{}' ({}), has_content={}\n", .{self.lexer.peek(), self.lexer.peek(), self.has_document_content});
                 // Check for directives
@@ -2714,6 +2715,7 @@ pub const Parser = struct {
                     if (self.has_document_content) {
                         return error.DirectiveAfterContent;
                     }
+                    has_directives = true;
                     // Skip directive for now (TODO: properly parse directives)
                     self.lexer.skipToEndOfLine();
                     _ = self.lexer.skipLineBreak();
@@ -2736,6 +2738,21 @@ pub const Parser = struct {
                     
                     break; // Only parse one value per document
                 }
+            }
+            
+            // Validate document structure: if we have directives but no explicit document start,
+            // and no content, then it's invalid (B63P case: %YAML 1.2 followed by ... without ---)
+            if (has_directives and !has_explicit_start and !self.has_document_content and self.lexer.match("...")) {
+                // Debug: Check what we're parsing
+                if (std.mem.startsWith(u8, self.lexer.input, "%YAML")) {
+                    std.debug.print("B63P DEBUG: has_directives={}, has_explicit_start={}, has_document_content={}\n", .{has_directives, has_explicit_start, self.has_document_content});
+                }
+                return error.InvalidDirective;
+            }
+            
+            // Simple debug for B63P
+            if (std.mem.indexOf(u8, self.lexer.input, "%YAML") != null) {
+                std.debug.print("B63P: Adding document, has_directives={}\n", .{has_directives});
             }
             
             try stream.addDocument(document);
