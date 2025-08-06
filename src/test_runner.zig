@@ -119,8 +119,10 @@ fn runTypescriptParser(allocator: std.mem.Allocator, yaml_input: []const u8) !bo
             \\const yaml = require('./yaml-ts/dist/index.js');
             \\const input = fs.readFileSync(process.argv[1], 'utf8');
             \\try {
-            \\  const doc = yaml.parseDocument(input);
-            \\  if (doc.errors && doc.errors.length > 0) {
+            \\  const docs = yaml.parseAllDocuments(input);
+            \\  let errors = [];
+            \\  for (const doc of docs) errors = errors.concat(doc.errors);
+            \\  if (errors.length > 0) {
             \\    process.exit(1);
             \\  }
             \\  process.exit(0);
