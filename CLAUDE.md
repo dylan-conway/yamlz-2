@@ -1,5 +1,12 @@
 # YAML Parser Implementation in Zig
 
+## Quick Status (December 2024)
+- **Current**: 348/402 tests passing (86.6%)
+- **Target**: 394/402 (98%)
+- **Failing**: 45 tests (36 too restrictive, 9 too permissive)
+- **Worktrees**: Created for all 45 failing tests in `worktrees/`
+- **Run tests**: `./zig/zig build test-yaml -- zig`
+
 ## Project Overview
 
 You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing approach. The goal is to achieve 98%+ passing tests from the official YAML test suite.
@@ -9,6 +16,7 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
 **Test Pass Rate**: 348/402 (86.6%)
 - Target: 394/402 (98%)
 - Gap: 46 tests
+- Failing: 54 tests total (45 unique test failures)
 
 ### Features Implemented
 1. **Core Parsing**:
@@ -61,15 +69,21 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
    - Test runner comparing against reference implementations
 
 ### Remaining Work to Reach 98%
-**Gap Analysis Updated**: To close the 46-test gap, focus on these categories:
+**Gap Analysis (Current State)**: 45 failing tests
+- **36 tests "too restrictive"** (80% of failures) - Valid YAML being incorrectly rejected
+- **9 tests "too permissive"** (20% of failures) - Invalid YAML being incorrectly accepted
 
-**🎯 NEXT PRIORITY: Too Restrictive Fixes** (~14 tests) 
-⭐ **LOW-HANGING FRUIT** - Valid YAML being rejected incorrectly
-- **UV7Q, U9NS, S4T7, M6YH**: Various valid constructs rejected
-- **J3BT, HS5T, E76Z**: Valid YAML patterns
-- **VJP3/01, ZF4X, DC7X**: Flow/block context issues
-- **2SXE, A2M4, UT92, 6M2F, FH7J**: Additional valid cases
-- These typically require loosening overly strict validation
+**🎯 PRIORITY: Fix "Too Restrictive" Tests** (36 tests)
+⭐ **BIGGEST OPPORTUNITY** - These are valid YAML constructs that should pass:
+- **2EBW, 3R3P, 5BVJ, 6ZKB**: Various valid block/flow constructs
+- **BU8L, CN3R, D88J, DC7X**: Valid YAML patterns being rejected
+- **EHF6, FRK4, H2RW, H3Z8**: Additional valid syntax
+- **HS5T, J3BT, J9HZ, JEF9**: Valid patterns incorrectly rejected
+- **JR7V, JS2J, K527, KK5P**: More valid constructs
+- **L24T, M9B4, NAT4, NB6Z**: Valid YAML being rejected
+- **NHX8, PRH3, PUW8, QF4Y**: Additional valid cases
+- **R4YG, T26H, T5N4, TL85**: Valid syntax patterns
+- **U3C3, UDM2, UDR7, W42U**: Final set of too-restrictive cases
 
 **Implementation Strategy**:
 1. Study `parseBlockSequence()` and `parseBlockMapping()` indentation logic
@@ -77,46 +91,28 @@ You are implementing a YAML 1.2 parser in Zig using a recursive descent parsing 
 3. Validate continuation line indentation in multiline constructs
 4. Fix anchor placement validation (anchors must be attached to values)
 
-**🔧 Flow Collection Validation** (~10-12 tests)
-- **JKF3**: Multiline unindented double quoted block key (not allowed in flow context)
-- **G9HC, BD7L, N4JP**: Invalid flow collection syntax patterns
-- **H7TQ, 9C9N**: Flow context validation gaps
-- **ZL4Z**: Invalid nested mapping (`a: 'b': c` - nested mapping syntax error)
-- Add stricter syntax validation for flow collections
-- Validate proper flow mapping/sequence nesting rules
+**🔧 Fix "Too Permissive" Tests** (9 tests)
+⚠️ **VALIDATION GAPS** - These invalid YAML constructs should fail but currently pass:
+- **DK4H**: Invalid directive or document structure
+- **GDY7**: Invalid YAML that should be rejected
+- **H7TQ**: Flow context validation gap
+- **LHL4**: Invalid construct being accepted
+- **Q4CL**: Invalid YAML syntax
+- **SU74**: Invalid anchor/alias usage (already noted as fixed but still failing)
+- **T833**: Invalid YAML construct
+- **W9L4**: Invalid syntax being accepted
+- **ZCZ6**: Invalid indentation or structure
 
-**⚠️ Document Structure/Directives** (~8-10 tests)
-- **MUS6/00, MUS6/01**: YAML directive validation gaps
-- **6S55**: Document structure validation issues
-- **RXY3, P2EQ**: Document boundary edge cases
-- Add validation for directive placement rules
-- Improve document boundary handling
-
-**🔍 Plain Scalar Comment Interruption** (~8-10 tests) 
-⚠️ **COMPLEX** - Multiline parsing edge cases
-- **8XDJ**: Comment interrupting plain scalar continuation (`key: word1\n#  xxx\n  word2`)
-- **BF9H, 4JVG**: Similar comment interruption patterns
-- **DK95/01**: Complex plain scalar edge cases
-- Requires significant changes to multiline scalar parsing logic
-
-**❌ Indentation Edge Cases** (~6-8 tests)
-- **4HVU**: Block sequence indentation (attempted fix caused regression)
-- **ZCZ6, SY6V**: Various indentation validation gaps
-- **DMG6, QLJ7**: Indentation in complex structures
-- Need careful implementation to avoid regressions
-
-**📊 TRACKING**: 
+**📊 PROGRESS TRACKING**: 
 - Current: 348/402 (86.6%)
-- With "too restrictive" fixes: ~362/402 (90.0%)
-- With flow validation: ~372/402 (92.5%)
-- With document structure: ~380/402 (94.5%)
+- With "too restrictive" fixes: ~384/402 (95.5%)
+- With "too permissive" fixes: ~393/402 (97.8%)
 - Target: 394/402 (98%)
 
-### Validation Gap Categories (86.6% Pass Rate)
-- **Too Permissive**: 46 tests "expected error, got success" - Parser accepts invalid YAML
-- **Too Restrictive**: 8 tests "expected success, got error" - Parser rejects valid YAML  
-- **Progress Made**: +8 tests fixed (340 → 348)
-- **Architecture Ready**: Parser has solid validation framework, ready for systematic improvements
+### Current Test Failure Breakdown
+- **Too Restrictive**: 36 tests - Parser rejects valid YAML (biggest opportunity)
+- **Too Permissive**: 9 tests - Parser accepts invalid YAML (validation gaps)
+- **Total Unique Failures**: 45 tests
 
 ## Important Resources
 
@@ -214,6 +210,13 @@ The yaml-test-suite no longer uses the old format with embedded YAML in test fil
 - Some tests have multiple subtests in numbered subdirectories
 
 ## Development Workflow
+
+### Working with Worktrees
+- **45 worktrees created** for each failing test in `worktrees/` directory
+- Each worktree has symlinks to: `yaml-rs`, `yaml-ts`, `yaml-test-suite`, `zig`, `yaml-rs-test`
+- To work on a specific test: `cd worktrees/TEST_NAME`
+- To run tests: `./zig/zig build test-yaml -- zig`
+- To check specific test: `./zig/zig build test-yaml -- zig --verbose 2>&1 | grep TEST_NAME`
 
 1. **Revert Non-Working Changes**: When making changes to fix a bug or test:
    - If the changes don't fix the intended bug/test, **revert them immediately**
@@ -402,10 +405,11 @@ cat yaml-test-suite/src/U9NS/in.yaml  # Check multi-doc edge case
 
 ### Lessons Learned from Fix Attempts
 
-**Latest Session Summary**: 
-- Successfully fixed SU74: Reject anchors on alias nodes (+2 tests)
-- Progress from 346 → 348 tests (86.1% → 86.6%)
-- Parallel worktree approach attempted but fixes need proper commits
+**Current Status (December 2024)**: 
+- **348/402 tests passing** (86.6%)
+- **45 unique failing tests**: 36 too restrictive, 9 too permissive
+- **SU74 still failing** despite previous fix attempt - needs investigation
+- Most failures are "too restrictive" - parser is overly strict
 
 **Previous Session Summary**: 
 - Initial attempts: Fixes for 236B, H7J7, JKF3, and RHX7 caused regression from 331 to 277 tests
