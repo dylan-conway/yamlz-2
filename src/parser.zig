@@ -1727,6 +1727,51 @@ pub const Parser = struct {
             return error.InvalidComment;
         }
         
+        // Check for invalid trailing content after the quoted scalar
+        if (!self.lexer.isEOF()) {
+            const next_char = self.lexer.peek();
+            const is_whitespace = next_char == ' ' or next_char == '\t';
+            const is_line_break = Lexer.isLineBreak(next_char);
+            const is_flow_delimiter = next_char == ':' or next_char == ',' or next_char == ']' or next_char == '}';
+            const is_comment = next_char == '#';
+            
+            // Immediately reject non-whitespace, non-structural characters
+            if (!is_whitespace and !is_line_break and !is_flow_delimiter and !is_comment) {
+                return error.UnexpectedContent;
+            }
+            
+            // For whitespace, look ahead to see what follows
+            if (is_whitespace) {
+                const saved_pos = self.lexer.pos;
+                const saved_line = self.lexer.line;
+                const saved_column = self.lexer.column;
+                
+                // Skip whitespace to see what comes next
+                while (!self.lexer.isEOF() and (self.lexer.peek() == ' ' or self.lexer.peek() == '\t')) {
+                    self.lexer.advanceChar();
+                }
+                
+                // After whitespace, only comments, line breaks, or flow delimiters should be allowed
+                if (!self.lexer.isEOF()) {
+                    const char_after_whitespace = self.lexer.peek();
+                    if (!Lexer.isLineBreak(char_after_whitespace) and 
+                        char_after_whitespace != '#' and
+                        char_after_whitespace != ':' and char_after_whitespace != ',' and 
+                        char_after_whitespace != ']' and char_after_whitespace != '}') {
+                        // Restore position before returning error
+                        self.lexer.pos = saved_pos;
+                        self.lexer.line = saved_line;
+                        self.lexer.column = saved_column;
+                        return error.UnexpectedContent;
+                    }
+                }
+                
+                // Restore position
+                self.lexer.pos = saved_pos;
+                self.lexer.line = saved_line;
+                self.lexer.column = saved_column;
+            }
+        }
         
         const node = try self.arena.allocator().create(ast.Node);
         node.* = .{
@@ -2003,6 +2048,51 @@ pub const Parser = struct {
             return error.InvalidComment;
         }
         
+        // Check for invalid trailing content after the quoted scalar
+        if (!self.lexer.isEOF()) {
+            const next_char = self.lexer.peek();
+            const is_whitespace = next_char == ' ' or next_char == '\t';
+            const is_line_break = Lexer.isLineBreak(next_char);
+            const is_flow_delimiter = next_char == ':' or next_char == ',' or next_char == ']' or next_char == '}';
+            const is_comment = next_char == '#';
+            
+            // Immediately reject non-whitespace, non-structural characters
+            if (!is_whitespace and !is_line_break and !is_flow_delimiter and !is_comment) {
+                return error.UnexpectedContent;
+            }
+            
+            // For whitespace, look ahead to see what follows
+            if (is_whitespace) {
+                const saved_pos = self.lexer.pos;
+                const saved_line = self.lexer.line;
+                const saved_column = self.lexer.column;
+                
+                // Skip whitespace to see what comes next
+                while (!self.lexer.isEOF() and (self.lexer.peek() == ' ' or self.lexer.peek() == '\t')) {
+                    self.lexer.advanceChar();
+                }
+                
+                // After whitespace, only comments, line breaks, or flow delimiters should be allowed
+                if (!self.lexer.isEOF()) {
+                    const char_after_whitespace = self.lexer.peek();
+                    if (!Lexer.isLineBreak(char_after_whitespace) and 
+                        char_after_whitespace != '#' and
+                        char_after_whitespace != ':' and char_after_whitespace != ',' and 
+                        char_after_whitespace != ']' and char_after_whitespace != '}') {
+                        // Restore position before returning error
+                        self.lexer.pos = saved_pos;
+                        self.lexer.line = saved_line;
+                        self.lexer.column = saved_column;
+                        return error.UnexpectedContent;
+                    }
+                }
+                
+                // Restore position
+                self.lexer.pos = saved_pos;
+                self.lexer.line = saved_line;
+                self.lexer.column = saved_column;
+            }
+        }
         
         const node = try self.arena.allocator().create(ast.Node);
         node.* = .{
