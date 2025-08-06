@@ -1994,6 +1994,7 @@ pub const Parser = struct {
                 // Calculate current indentation level for validation
                 var continuation_indent: usize = 0;
                 const whitespace_start = self.lexer.pos;
+                var found_empty_line = false;
                 
                 // Count the indentation on the continuation line
                 while (!self.lexer.isEOF()) {
@@ -2001,17 +2002,20 @@ pub const Parser = struct {
                     if (next_ch == ' ') {
                         continuation_indent += 1;
                         self.lexer.advanceChar();
-                    } else if (next_ch == '\t' and continuation_indent == 0) {
-                        // Tabs at the start of continuation lines (before any spaces) are not allowed for indentation
-                        return error.TabsNotAllowed;
+                    } else if (next_ch == '\t') {
+                        // Inside double-quoted strings, tabs are valid content characters
+                        // They are part of the string content, not YAML indentation
+                        // Just count them as part of the line prefix that will be handled by line folding
+                        self.lexer.advanceChar();
                     } else if (next_ch == '\n' or next_ch == '\r') {
-                        // Empty line - skip and continue
+                        // Empty line - preserve it
                         try result.append('\n');
                         self.lexer.advanceChar();
                         if (next_ch == '\r' and self.lexer.peek() == '\n') {
                             self.lexer.advanceChar();
                         }
                         continuation_indent = 0; // Reset for next line
+                        found_empty_line = true;
                     } else {
                         // Found content - validate indentation and check for invalid markers
                         // For multiline double-quoted strings, continuation lines must have proper indentation.
@@ -2056,7 +2060,8 @@ pub const Parser = struct {
                 }
                 
                 // If we have content after the newline, fold it into a space
-                if (self.lexer.pos > whitespace_start and result.items.len > 0) {
+                // But only if we didn't encounter empty lines (which preserve newlines)
+                if (!found_empty_line and self.lexer.pos > whitespace_start and result.items.len > 0) {
                     try result.append(' ');
                 }
             } else if (ch == ' ' or ch == '\t') {
