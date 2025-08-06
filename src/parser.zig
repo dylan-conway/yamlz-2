@@ -3028,12 +3028,20 @@ pub const Parser = struct {
             try stream.addDocument(document);
             
             // Check for document end marker first
+            var has_document_end = false;
             if (self.lexer.match("...")) {
+                has_document_end = true;
                 try self.skipDocumentSeparator();
             }
             
             // Skip whitespace and comments but preserve document markers
             self.skipWhitespaceAndCommentsButNotDocumentMarkers();
+            
+            // Check if we have a directive after content - this is invalid
+            // BUT only if we didn't have a proper document end marker
+            if (!has_document_end and !self.lexer.isEOF() and self.lexer.peek() == '%') {
+                return error.DirectiveAfterContent;
+            }
             
             // If we're at another document marker or EOF, continue
             if (self.lexer.isEOF() or self.isAtDocumentMarker()) {
