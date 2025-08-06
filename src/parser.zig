@@ -380,6 +380,7 @@ pub const Parser = struct {
                 // Skip the quoted string to see what follows
                 self.lexer.advanceChar(); // Skip opening quote
                 var in_escape = false;
+                var has_unescaped_newline = false;
                 while (!self.lexer.isEOF()) {
                     const peek_ch = self.lexer.peek();
                     if (in_escape) {
@@ -392,21 +393,36 @@ pub const Parser = struct {
                     } else if (peek_ch == '"') {
                         self.lexer.advanceChar(); // Skip closing quote
                         break;
+                    } else if (peek_ch == '\n' or peek_ch == '\r') {
+                        // Found an unescaped newline in the quoted string
+                        // This makes it invalid as a mapping key
+                        has_unescaped_newline = true;
                     }
                     self.lexer.advanceChar();
                 }
                 
                 // Now check what follows
                 self.skipSpaces();
-                const is_mapping_key = self.lexer.peek() == ':' and 
+                // A double-quoted string with unescaped newlines cannot be a mapping key
+                const is_mapping_key = !has_unescaped_newline and self.lexer.peek() == ':' and 
                     (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or 
                      self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0);
-                // std.debug.print("DEBUG: After lookahead, is_mapping_key = {}\n", .{is_mapping_key});
+                
+                // Check if this is an invalid multiline key
+                const is_invalid_multiline_key = has_unescaped_newline and self.lexer.peek() == ':';
+                
+                // std.debug.print("DEBUG: After lookahead, has_unescaped_newline={}, is_invalid_multiline_key={}\n", .{has_unescaped_newline, is_invalid_multiline_key});
                 
                 // Restore position
                 self.lexer.pos = save_pos;
                 self.lexer.line = save_line;
                 self.lexer.column = save_column;
+                
+                // Now handle the invalid case after restoring position
+                if (is_invalid_multiline_key) {
+                    // This is an invalid multiline key - reject immediately
+                    return error.InvalidMultilineKey;
+                }
                 
                 if (is_mapping_key) {
                     // This is a mapping with a quoted key - parse the key in appropriate KEY context
@@ -445,6 +461,48 @@ pub const Parser = struct {
                     }
                     
                     try mapping_node.data.mapping.pairs.append(.{ .key = quoted_key, .value = value.? });
+                    
+                    // Continue parsing additional pairs at the same indentation level
+                    // This is necessary to handle multi-pair block mappings that start with quoted keys
+                    self.skipWhitespaceAndComments();
+                    while (!self.lexer.isEOF() and !self.isAtDocumentMarker()) {
+                        // Check if we're still at the same indentation level
+                        const current_indent = self.getCurrentIndent();
+                        if (current_indent != min_indent) {
+                            break;
+                        }
+                        
+                        // Check if the next line looks like another key-value pair
+                        const next_ch = self.lexer.peek();
+                        if (next_ch == '"') {
+                            // Another quoted key - parse it
+                            const next_value = try self.parseValue(min_indent);
+                            
+                            if (next_value == null) {
+                                break;
+                            }
+                            
+                            // If parseValue returns a mapping, merge its pairs into ours
+                            if (next_value) |nv| {
+                                if (nv.type == .mapping) {
+                                    for (nv.data.mapping.pairs.items) |pair| {
+                                        try mapping_node.data.mapping.pairs.append(pair);
+                                    }
+                                } else {
+                                    // Not a mapping, stop
+                                    break;
+                                }
+                            } else {
+                                break;
+                            }
+                        } else {
+                            // Not a quoted string, stop
+                            break;
+                        }
+                        
+                        self.skipWhitespaceAndComments();
+                    }
+                    
                     node = mapping_node;
                 } else {
                     node = try self.parseDoubleQuotedScalar();
@@ -1358,7 +1416,7 @@ pub const Parser = struct {
     }
     
     fn parseBlockMapping(self: *Parser, min_indent: usize) ParseError!*ast.Node {
-        // // std.debug.print("DEBUG: parseBlockMapping called, min_indent={}\n", .{min_indent});
+        // std.debug.print("DEBUG: parseBlockMapping called, min_indent={}\n", .{min_indent});
         const node = try self.arena.allocator().create(ast.Node);
         node.* = .{
             .type = .mapping,
