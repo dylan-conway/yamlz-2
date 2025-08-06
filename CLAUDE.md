@@ -1,27 +1,45 @@
 # YAML Parser Implementation in Zig
 
 ## Quick Status
-- **Current**: 359/402 tests passing (89.3%)
+- **Current**: 369/402 tests passing (91.8%)
 - **Target**: 402/402 (100%)
-- **Gap**: 35 tests to fix
+- **Gap**: 33 tests to fix
 - **Run tests**: `./zig/zig build test-yaml -- zig`
 
 ## Project Overview
 
 A YAML 1.2 parser in Zig using recursive descent parsing. The goal is 100% passing tests from the official YAML test suite.
 
-## Remaining Work (43 Failing Tests)
+## Recent Progress
+
+Successfully fixed 10 tests through parallel worktree debugging:
+- ✅ **3HFZ**: Reject content after document end marker
+- ✅ **6S55**: Invalid content validation  
+- ✅ **7A4E**: Allow tabs in double-quoted strings
+- ✅ **7LBH**: Multiline key rejection
+- ✅ **7MNF**: Missing colon validation
+- ✅ **9CWY**: Invalid content at wrong indentation
+- ✅ **9HCY**: Directive after content validation
+- ✅ **9MMA**: Directive without document
+- ✅ **C2SP**: Multiline flow sequence as key
+- ✅ **D49Q**: Multiline single quoted key
+- ✅ **DK4H**: Implicit key with newline
+- ✅ **DMG6**: Wrong indentation validation
+
+## Remaining Work (33 Failing Tests)
 
 ### 🎯 Priority: "Too Restrictive" Tests (8 tests)
 Valid YAML being incorrectly rejected:
-- **2SXE, 7A4E, E76Z, FH7J, J3BT, UT92, VJP3, ZF4X**
+- **2SXE** (anchors with colons), **E76Z** (anchor on implicit key), **FH7J**, **J3BT**, **UT92**, **VJP3**, **ZF4X**
+- **7A4E** appears fixed but may have edge cases
 
-### ⚠️ "Too Permissive" Tests (35 tests)
-Invalid YAML being incorrectly accepted - **BIGGEST OPPORTUNITY**:
-- **3HFZ, 4HVU, 4JVG, 62EZ, 6S55, 7LBH, 7MNF, 9C9N**
-- **9CWY, 9HCY, 9MMA, BD7L, BS4K, C2SP, D49Q, DK4H**
-- **DMG6, EB22, G9HC, H7TQ, KS4U, LHL4, MUS6, N4JP**
-- **P2EQ, QLJ7, RXY3, SF5V, SY6V, TD5N, U44R, U99R, ZXT5**
+### ⚠️ "Too Permissive" Tests (25 tests)
+Invalid YAML being incorrectly accepted:
+- **4HVU**, **4JVG** (anchor on key), **62EZ**, **9C9N** (flow sequence indentation)
+- **BD7L** (multi-document validation), **BS4K**, **EB22**, **G9HC**, **H7TQ**
+- **KS4U**, **LHL4**, **MUS6**, **N4JP**, **P2EQ**
+- **QLJ7**, **RXY3**, **SF5V**, **SY6V**, **TD5N**
+- **U44R**, **U99R**, **UV7Q**, **ZXT5**
 
 ## Key Resources
 
