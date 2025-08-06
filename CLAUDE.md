@@ -2,13 +2,13 @@
 
 ## Quick Status
 - **Current**: 359/402 tests passing (89.3%)
-- **Target**: 394/402 (98%)
+- **Target**: 402/402 (100%)
 - **Gap**: 35 tests to fix
 - **Run tests**: `./zig/zig build test-yaml -- zig`
 
 ## Project Overview
 
-A YAML 1.2 parser in Zig using recursive descent parsing. The goal is 98%+ passing tests from the official YAML test suite.
+A YAML 1.2 parser in Zig using recursive descent parsing. The goal is 100% passing tests from the official YAML test suite.
 
 ## Remaining Work (43 Failing Tests)
 
@@ -63,5 +63,5 @@ Create worktrees as needed for debugging specific tests: `git worktree add workt
 ### Key Principles
 - **Too restrictive issues** (8 tests) = loosening validation to accept valid YAML
 - **Too permissive issues** (35 tests) = adding validation to reject invalid YAML - **PRIMARY FOCUS**
-- Study TypeScript parser (94.8% baseline) for correct behavior
+- Study TypeScript parser (99.3% baseline) for correct behavior
 - Use git commits frequently to track progress
