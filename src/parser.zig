@@ -52,6 +52,7 @@ pub const ParseError = error{
     InconsistentIndentation,
     InvalidValueAfterMapping,
     SequenceOnSameLineAsMappingKey,
+    InvalidContentAfterDocumentEnd,
 };
 
 pub const Parser = struct {
@@ -2806,8 +2807,11 @@ pub const Parser = struct {
     
     // Multi-document parsing functions
     fn skipDocumentSeparator(self: *Parser) ParseError!void {
-        // Skip document start (---) or end (...) markers
-        if (self.lexer.match("---") or self.lexer.match("...")) {
+        // Check which marker we have
+        const is_document_end = self.lexer.match("...");
+        const is_document_start = self.lexer.match("---");
+        
+        if (is_document_start or is_document_end) {
             self.lexer.advance(3);
             
             // Skip any whitespace and comments after the marker
@@ -2827,7 +2831,12 @@ pub const Parser = struct {
                     }
                     break;
                 } else {
-                    // Check for specific invalid patterns after document marker
+                    // For document end marker (...), no other content is allowed on the same line
+                    if (is_document_end) {
+                        return error.InvalidContentAfterDocumentEnd;
+                    }
+                    
+                    // For document start marker (---), check for specific invalid patterns
                     // Reject anchors followed by mapping on the same line
                     if (ch == '&') {
                         const save_pos = self.lexer.pos;
