@@ -1661,10 +1661,16 @@ pub const Parser = struct {
                         return error.SequenceOnSameLineAsMappingKey;
                     }
                     
+                    // For same-line values in block mappings, we need to prevent parsing implicit mappings
+                    // The pattern "key: key2: value" is invalid - key2: value should be treated as a scalar
+                    // but the current parser treats it as a nested mapping, which is incorrect
+                    const saved_context = self.in_flow_context;
+                    self.in_flow_context = true; // Force flow context to prevent block mapping detection
                     value = try self.parseValue(current_indent);
+                    self.in_flow_context = saved_context;
                     
                     // After parsing any value in a mapping, check for invalid nested mapping syntax
-                    // like "a: 'b': c" which should be an error
+                    // like "a: 'b': c" or "a: b: c: d" which should be errors
                     const saved_pos = self.lexer.pos;
                     self.skipSpaces(); // Skip spaces but not newlines
                     
@@ -1672,6 +1678,25 @@ pub const Parser = struct {
                     // this creates invalid nested mapping syntax
                     if (self.lexer.peek() == ':' and !Lexer.isLineBreak(self.lexer.peekAt(self.lexer.pos - 1))) {
                         return error.InvalidNestedMapping;
+                    }
+                    
+                    // Additionally, check if the value itself contains invalid mapping patterns
+                    // For plain scalars like "b: c: d", this is invalid in mapping context
+                    if (value != null and value.?.type == .scalar and value.?.data.scalar.style == .plain) {
+                        const scalar_value = value.?.data.scalar.value;
+                        // Check if the plain scalar contains mapping indicators that would make it invalid
+                        var i: usize = 0;
+                        while (i < scalar_value.len) {
+                            if (scalar_value[i] == ':') {
+                                // Found a colon - check if it's followed by valid mapping separator
+                                if (i + 1 < scalar_value.len and 
+                                    (scalar_value[i + 1] == ' ' or scalar_value[i + 1] == '\t')) {
+                                    // This looks like mapping syntax within a plain scalar value
+                                    return error.InvalidNestedMapping;
+                                }
+                            }
+                            i += 1;
+                        }
                     }
                     
                     self.lexer.pos = saved_pos;
@@ -1683,6 +1708,21 @@ pub const Parser = struct {
                 
                 try node.data.mapping.pairs.append(.{ .key = key.?, .value = value.? });
                 processing_explicit_key_value = false; // Reset flag after processing
+                
+                // Before skipping to the next line, validate that there's no invalid content remaining on the current line
+                // This catches cases like "a: b: c: d" where ": c: d" would be invalid remaining content
+                const saved_pos = self.lexer.pos;
+                self.skipSpaces(); // Skip any spaces but not newlines
+                
+                // Check if there's any non-whitespace, non-comment content remaining on the line
+                if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and self.lexer.peek() != '#') {
+                    // There's unexpected content on the line - check if it looks like invalid mapping syntax
+                    if (self.lexer.peek() == ':') {
+                        return error.InvalidNestedMapping;
+                    }
+                    // For other unexpected content, restore position and let normal processing handle it
+                    self.lexer.pos = saved_pos;
+                }
                 
                 // Always skip to the next line after parsing a mapping pair
                 if (!self.lexer.isEOF()) {
