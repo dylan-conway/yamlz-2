@@ -1,28 +1,27 @@
 # YAML Parser Implementation in Zig
 
 ## Quick Status
-- **Current**: 354/402 tests passing (88.1%)
+- **Current**: 359/402 tests passing (89.3%)
 - **Target**: 394/402 (98%)
-- **Gap**: 40 tests to fix
+- **Gap**: 35 tests to fix
 - **Run tests**: `./zig/zig build test-yaml -- zig`
 
 ## Project Overview
 
 A YAML 1.2 parser in Zig using recursive descent parsing. The goal is 98%+ passing tests from the official YAML test suite.
 
-## Remaining Work (48 Failing Tests)
+## Remaining Work (43 Failing Tests)
 
-### 🎯 Priority: "Too Restrictive" Tests (39 tests)
-Valid YAML being incorrectly rejected - **BIGGEST OPPORTUNITY**:
-- **2EBW, 3R3P, 5BVJ, 6ZKB, BU8L, CN3R, D88J, DC7X**
-- **EHF6, FRK4, H2RW, H3Z8, HS5T, J3BT, J9HZ, JEF9** 
-- **JR7V, JS2J, K527, KK5P, L24T, M9B4, NAT4, NB6Z**
-- **NHX8, PRH3, PUW8, QF4Y, R4YG, T26H, T5N4, TL85**
-- **U3C3, UDM2, UDR7, W42U, + 3 more**
+### 🎯 Priority: "Too Restrictive" Tests (8 tests)
+Valid YAML being incorrectly rejected:
+- **2SXE, 7A4E, E76Z, FH7J, J3BT, UT92, VJP3, ZF4X**
 
-### ⚠️ "Too Permissive" Tests (9 tests)
-Invalid YAML being incorrectly accepted:
-- **DK4H, GDY7, H7TQ, LHL4, Q4CL, SU74, T833, W9L4, ZCZ6**
+### ⚠️ "Too Permissive" Tests (35 tests)
+Invalid YAML being incorrectly accepted - **BIGGEST OPPORTUNITY**:
+- **3HFZ, 4HVU, 4JVG, 62EZ, 6S55, 7LBH, 7MNF, 9C9N**
+- **9CWY, 9HCY, 9MMA, BD7L, BS4K, C2SP, D49Q, DK4H**
+- **DMG6, EB22, G9HC, H7TQ, KS4U, LHL4, MUS6, N4JP**
+- **P2EQ, QLJ7, RXY3, SF5V, SY6V, TD5N, U44R, U99R, ZXT5**
 
 ## Key Resources
 
@@ -31,7 +30,7 @@ Invalid YAML being incorrectly accepted:
   - TypeScript: `./yaml-ts/` (94.8% baseline)
   - Rust: `./yaml-rs/` (83.8% baseline)
 - **Test Suite**: `./yaml-test-suite/src/`
-- **Worktrees**: `worktrees/` - Individual worktrees for each failing test
+- **Worktrees**: `worktrees/` - Individual worktrees for specific tests being debugged
 
 ## Testing
 
@@ -53,7 +52,7 @@ Invalid YAML being incorrectly accepted:
 ## Strategy for Agents
 
 ### Working with Worktrees
-Each failing test has its own worktree in `worktrees/TEST_NAME/` with symlinks to all necessary resources.
+Create worktrees as needed for debugging specific tests: `git worktree add worktrees/TEST_NAME`
 
 ### Fix Strategy
 1. **Study reference implementations first** (`yaml-ts/` and `yaml-rs/`)
@@ -62,7 +61,7 @@ Each failing test has its own worktree in `worktrees/TEST_NAME/` with symlinks t
 4. **Revert if broken** - if a fix doesn't work, revert immediately
 
 ### Key Principles
-- **Too restrictive issues** (39 tests) = loosening validation = easier fixes
-- **Too permissive issues** (9 tests) = adding validation = harder fixes
+- **Too restrictive issues** (8 tests) = loosening validation to accept valid YAML
+- **Too permissive issues** (35 tests) = adding validation to reject invalid YAML - **PRIMARY FOCUS**
 - Study TypeScript parser (94.8% baseline) for correct behavior
 - Use git commits frequently to track progress
