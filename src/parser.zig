@@ -1884,6 +1884,13 @@ pub const Parser = struct {
                 }
             } else if (ch == '\n' or ch == '\r') {
                 // Handle line folding in double-quoted strings
+                
+                // According to YAML spec, multiline double-quoted strings are not allowed in key contexts
+                // nb-double-text(n,BLOCK-KEY) ::= nb-double-one-line
+                // nb-double-text(n,FLOW-KEY)  ::= nb-double-one-line
+                if (self.isInKeyContext()) {
+                    return error.InvalidMultilineKey;
+                }
                 self.lexer.advanceChar();
                 if (ch == '\r' and self.lexer.peek() == '\n') {
                     self.lexer.advanceChar();
