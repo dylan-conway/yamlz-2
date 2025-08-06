@@ -1912,9 +1912,12 @@ pub const Parser = struct {
                 // Count the indentation on the continuation line
                 while (!self.lexer.isEOF()) {
                     const next_ch = self.lexer.peek();
-                    if (next_ch == ' ' or next_ch == '\t') {
+                    if (next_ch == ' ') {
                         continuation_indent += 1;
                         self.lexer.advanceChar();
+                    } else if (next_ch == '\t' and continuation_indent == 0) {
+                        // Tabs at the start of continuation lines (before any spaces) are not allowed for indentation
+                        return error.TabsNotAllowed;
                     } else if (next_ch == '\n' or next_ch == '\r') {
                         // Empty line - skip and continue
                         try result.append('\n');
