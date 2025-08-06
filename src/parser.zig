@@ -1163,12 +1163,19 @@ pub const Parser = struct {
                 first_item = false;
             } else {
                 // Parse item
+                const start_line = self.lexer.line;
                 const item = try self.parseValue(0);
                 if (item) |value| {
+                    const end_line_before_skip = self.lexer.line;
                     try self.skipWhitespaceAndCommentsInFlow();
                     
                     // Check if this is a mapping key
                     if (self.lexer.peek() == ':') {
+                        // Check if the key spans multiple lines (invalid for implicit keys in flow context)
+                        if (end_line_before_skip != start_line) {
+                            return error.InvalidMultilineKey;
+                        }
+                        
                         // This is a single-pair mapping
                         self.lexer.advanceChar(); // Skip ':'
                         try self.skipWhitespaceAndCommentsInFlow();
