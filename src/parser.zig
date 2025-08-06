@@ -2600,7 +2600,7 @@ pub const Parser = struct {
     }
     
     // Multi-document parsing functions
-    fn skipDocumentSeparator(self: *Parser) ParseError!void {
+    fn skipDocumentSeparator(self: *Parser) void {
         // Skip document start (---) or end (...) markers
         if (self.lexer.match("---") or self.lexer.match("...")) {
             self.lexer.advance(3);
@@ -2622,8 +2622,7 @@ pub const Parser = struct {
                     }
                     break;
                 } else {
-                    // Invalid content after document marker on the same line
-                    return error.InvalidDocumentStructure;
+                    break;
                 }
             }
         }
@@ -2644,7 +2643,7 @@ pub const Parser = struct {
             var has_explicit_start = false;
             if (self.lexer.match("---")) {
                 has_explicit_start = true;
-                try self.skipDocumentSeparator();
+                self.skipDocumentSeparator();
                 self.skipWhitespaceAndComments();
             }
             
@@ -2713,7 +2712,7 @@ pub const Parser = struct {
             
             // Check for document end marker first
             if (self.lexer.match("...")) {
-                try self.skipDocumentSeparator();
+                self.skipDocumentSeparator();
             }
             
             // Skip whitespace and comments but preserve document markers
