@@ -1485,7 +1485,15 @@ pub const Parser = struct {
                     
                     // Push BLOCK_KEY context for explicit key parsing
                     try self.pushContext(.BLOCK_KEY);
-                    key = try self.parsePlainScalar();
+                    key = (try self.parseValue(self.lexer.column)) orelse blk: {
+                       // If parseValue returns null, create an empty scalar node
+                        const empty_node = try self.arena.allocator().create(ast.Node);
+                        empty_node.* = .{
+                            .type = .scalar,
+                            .data = .{ .scalar = .{ .value = "" } }
+                        };
+                        break :blk empty_node;
+                    };
                     self.popContext();
                     
                     // For explicit keys, the mapping colon can be:
