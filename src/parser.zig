@@ -1892,13 +1892,13 @@ pub const Parser = struct {
                 }
             } else if (ch == '\n' or ch == '\r') {
                 // Handle line folding in double-quoted strings
-                
                 // According to YAML spec, multiline double-quoted strings are not allowed in key contexts
                 // nb-double-text(n,BLOCK-KEY) ::= nb-double-one-line
                 // nb-double-text(n,FLOW-KEY)  ::= nb-double-one-line
                 if (self.isInKeyContext()) {
                     return error.InvalidMultilineKey;
                 }
+                
                 self.lexer.advanceChar();
                 if (ch == '\r' and self.lexer.peek() == '\n') {
                     self.lexer.advanceChar();
@@ -2027,7 +2027,28 @@ pub const Parser = struct {
         const ch = self.lexer.peek();
         
         // Flow collections and scalars
-        if (ch == '[') return try self.parseFlowSequence();
+        std.debug.print("DEBUG: About to check ch == '[', ch='{}' ({})\n", .{ch, ch});
+        if (ch == '[') {
+            // Record the starting line for multiline implicit key detection
+            const start_line = self.lexer.line;
+            const sequence = try self.parseFlowSequence();
+            
+            // After parsing the flow sequence, check if it's being used as a multiline implicit key
+            // This is invalid according to YAML spec: implicit keys cannot span multiple lines
+            std.debug.print("DEBUG: Flow sequence parsed, start_line={}, current_line={}\n", .{start_line, self.lexer.line});
+            if (self.lexer.line != start_line) {
+                // The flow sequence spans multiple lines, check if it's followed by ':'
+                self.skipSpaces();
+                if (!self.lexer.isEOF() and self.lexer.peek() == ':' and 
+                    (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or 
+                     self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
+                    // This is a multiline implicit key, which is invalid
+                    return error.InvalidMultilineKey;
+                }
+            }
+            
+            return sequence;
+        }
         if (ch == '{') return try self.parseFlowMapping();
         if (ch == '"') return try self.parseDoubleQuotedScalar();
         if (ch == '\'') return try self.parseSingleQuotedScalar();
