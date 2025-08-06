@@ -370,7 +370,33 @@ pub const Parser = struct {
         var node: ?*ast.Node = null;
         
         if (ch == '[') {
+            // Record the starting line for multiline implicit key detection
+            const start_line = self.lexer.line;
             node = try self.parseFlowSequence();
+            
+            // After parsing the flow sequence, check if it's being used as a multiline implicit key
+            // This is invalid according to YAML spec: implicit keys cannot span multiple lines
+            if (self.lexer.line != start_line) {
+                // The flow sequence spans multiple lines, check if it's followed by ':'
+                const save_pos = self.lexer.pos;
+                const save_line = self.lexer.line;
+                const save_column = self.lexer.column;
+                
+                self.skipSpaces();
+                const is_mapping_key = !self.lexer.isEOF() and self.lexer.peek() == ':' and 
+                    (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or 
+                     self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0);
+                
+                // Restore position
+                self.lexer.pos = save_pos;
+                self.lexer.line = save_line;
+                self.lexer.column = save_column;
+                
+                if (is_mapping_key) {
+                    // This is a multiline implicit key, which is invalid
+                    return error.InvalidMultilineKey;
+                }
+            }
         } else if (ch == '{') {
             node = try self.parseFlowMapping();
         } else if (ch == '"') {
