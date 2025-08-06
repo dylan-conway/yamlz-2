@@ -39,6 +39,7 @@ pub const ParseError = error{
     DuplicateYamlDirective,
     UnsupportedYamlVersion,
     UnknownDirective,
+    DirectiveWithoutDocument,
     UnterminatedQuotedString,
     ExpectedCommaOrBrace,
     ExpectedColonOrComma,
@@ -235,6 +236,11 @@ pub const Parser = struct {
                 // Content starts - parse it and exit the directive loop
                 break;
             }
+        }
+        
+        // Check if we have directives but no content - this is invalid
+        if (self.has_yaml_directive and self.lexer.isEOF()) {
+            return error.DirectiveWithoutDocument;
         }
         
         const root = if (self.lexer.isEOF()) null else blk: {
@@ -3008,6 +3014,12 @@ pub const Parser = struct {
                     
                     break; // Only parse one value per document
                 }
+            }
+            
+            // Check if we have directives but no content at all (9MMA case: just %YAML 1.2)
+            // Only error if we're at EOF and haven't seen document markers
+            if (has_directives and !self.has_document_content and self.lexer.isEOF()) {
+                return error.DirectiveWithoutDocument;
             }
             
             // Validate document structure: if we have directives but no explicit document start,
