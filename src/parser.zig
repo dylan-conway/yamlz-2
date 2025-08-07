@@ -869,6 +869,7 @@ pub const Parser = struct {
         // not just the scalar content. For mapping values, this is the mapping key's indent + 1.
         const context_indent = if (self.mapping_context_indent) |indent| indent else initial_indent;
         
+        
         // std.debug.print("DEBUG: parsePlainScalar called, char='{c}' (0x{x}), pos={}, indent={}, in_flow={}\n", .{self.lexer.peek(), self.lexer.peek(), start_pos, initial_indent, self.in_flow_context});
         
         // First, consume the first line
@@ -925,7 +926,6 @@ pub const Parser = struct {
         const allow_multiline = (self.context != .BLOCK_KEY) and 
                                 (self.isInFlowContext() or self.mapping_context_indent == null);
         
-        // std.debug.print("DEBUG: allow_multiline={}, context={}, in_flow={}\n", .{allow_multiline, self.context, self.in_flow_context});
         
         // Special check for invalid multiline implicit keys even when multiline is not allowed
         // This catches cases like HU3P where a plain scalar in a block mapping value
@@ -1091,6 +1091,7 @@ pub const Parser = struct {
                 }
                 const new_indent = self.lexer.column;
                 
+                
                 // Check if this line starts with a comment
                 if (self.lexer.peek() == '#') {
                     // A comment line interrupts the plain scalar
@@ -1138,10 +1139,32 @@ pub const Parser = struct {
                 
                 // For continuation in block context, line must be more indented than the mapping context
                 // In flow context, continuation is allowed at any indentation as long as it's not a flow indicator
-                if (!self.in_flow_context and new_indent <= context_indent) {
-                    // Not a continuation - restore position to before line break
-                    self.lexer.pos = line_break_pos;
-                    break;
+                // Special case: At document root (indent 1), allow continuation at same indent
+                // unless it's a document marker
+                if (!self.in_flow_context) {
+                    if (new_indent < context_indent) {
+                        // Less indented - definitely not a continuation
+                        self.lexer.pos = line_break_pos;
+                        break;
+                    } else if (new_indent == context_indent) {
+                        // Same indentation
+                        if (context_indent == 1) {
+                            // At document root - check if it's a document marker
+                            const ch = self.lexer.peek();
+                            if ((ch == '-' and self.lexer.match("---")) or 
+                                (ch == '.' and self.lexer.match("..."))) {
+                                // Document marker - not a continuation
+                                self.lexer.pos = line_break_pos;
+                                break;
+                            }
+                            // Otherwise allow as continuation (handles %YAML as content)
+                        } else {
+                            // Not at document root - require more indentation
+                            self.lexer.pos = line_break_pos;
+                            break;
+                        }
+                    }
+                    // If new_indent > context_indent, it's a valid continuation, continue
                 }
                 
                 // In flow context, check if the line starts with a flow indicator that would end the scalar
@@ -1158,6 +1181,7 @@ pub const Parser = struct {
                 if (comment_interrupted_previous_line) {
                     return error.InvalidPlainScalar;
                 }
+                
                 
                 // Check if this continuation line contains a mapping indicator that would
                 // make this an invalid multi-line implicit key
@@ -1256,6 +1280,31 @@ pub const Parser = struct {
         }
         
         var value = self.lexer.input[start_pos..end_pos];
+        
+        // Fold newlines in plain scalars to spaces (YAML folding rules)
+        // We need to replace single newlines with spaces
+        var folded_value = std.ArrayList(u8).init(self.arena.allocator());
+        var i: usize = 0;
+        while (i < value.len) {
+            if (i < value.len - 1 and Lexer.isLineBreak(value[i])) {
+                // Single line break - fold to space
+                try folded_value.append(' ');
+                i += 1;
+                // Skip any additional whitespace after the newline
+                while (i < value.len and (value[i] == ' ' or value[i] == '\t')) {
+                    i += 1;
+                }
+            } else {
+                try folded_value.append(value[i]);
+                i += 1;
+            }
+        }
+        
+        // Use the folded value if we did any folding
+        if (folded_value.items.len > 0) {
+            value = folded_value.items;
+        }
+        
         
         // // std.debug.print("Debug parsePlainScalar: parsed '{s}' from pos {} to {}\n", .{value, start_pos, end_pos});
         
@@ -3529,15 +3578,11 @@ pub const Parser = struct {
             // Parse directives and content
             var has_directives = false;
             while (!self.lexer.isEOF() and !self.isAtDocumentMarker()) {
-                // std.debug.print("RHX7 DEBUG: char='{}' ({}), has_content={}\n", .{self.lexer.peek(), self.lexer.peek(), self.has_document_content});
-                // Check for directives
-                if (self.lexer.peek() == '%') {
+                // Check for directives - but ONLY if we haven't had an explicit document start
+                // After ---, any % is part of content, not a directive
+                if (self.lexer.peek() == '%' and !has_explicit_start) {
                     // If we've already parsed content in this document, directives are not allowed
                     if (self.has_document_content) {
-                        return error.DirectiveAfterContent;
-                    }
-                    // Directives must appear before document start marker
-                    if (has_explicit_start) {
                         return error.DirectiveAfterContent;
                     }
                     has_directives = true;

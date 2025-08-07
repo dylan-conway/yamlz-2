@@ -1,0 +1,35 @@
+--- a/src/parser.zig
++++ b/src/parser.zig
+@@ -1159,10 +1159,27 @@
+                 if (std.mem.indexOf(u8, self.lexer.input, "scalar") != null and std.mem.indexOf(u8, self.lexer.input, "%YAML") != null) {
+                     std.debug.print("XLQ9: Checking continuation: new_indent={}, context_indent={}, in_flow={}\n", .{new_indent, context_indent, self.in_flow_context});
+                 }
+-                if (!self.in_flow_context and new_indent <= context_indent) {
+-                    // Not a continuation - restore position to before line break
+-                    self.lexer.pos = line_break_pos;
+-                    break;
++                // Special case for XLQ9: At document root (context_indent == 1), 
++                // allow plain scalar to continue at same indentation
++                if (!self.in_flow_context and new_indent < context_indent) {
++                    // Definitely not a continuation
++                    self.lexer.pos = line_break_pos;
++                    break;
++                } else if (!self.in_flow_context and new_indent == context_indent) {
++                    // At same indentation - check if this could be a continuation
++                    // For document root level (indent 1), allow continuation
++                    if (context_indent == 1) {
++                        // Check if this line starts with a document marker
++                        const ch = self.lexer.peek();
++                        if ((ch == '-' and self.lexer.match("---")) or 
++                            (ch == '.' and self.lexer.match("..."))) {
++                            // Document marker - not a continuation
++                            self.lexer.pos = line_break_pos;
++                            break;
++                        }
++                        // Otherwise, allow it as a continuation (this handles %YAML as part of scalar)
++                    } else {
++                        // Not at document root - require more indentation
++                        self.lexer.pos = line_break_pos;
++                        break;
++                    }
+                 }
