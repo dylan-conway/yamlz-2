@@ -13,6 +13,13 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
     
+    // Create temporary directory for test files
+    const cwd = std.fs.cwd();
+    cwd.makeDir(".tmp") catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => return err,
+    };
+    
     // Parse command line arguments
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
@@ -33,7 +40,6 @@ pub fn main() !void {
     const verbose = args.len == 3 and std.mem.eql(u8, args[2], "--verbose");
     
     // Get test suite directory
-    const cwd = std.fs.cwd();
     const test_dir = try cwd.openDir("yaml-test-suite", .{ .iterate = true });
     
     var total_tests: u32 = 0;
@@ -102,10 +108,11 @@ pub fn main() !void {
 
 fn runTypescriptParser(allocator: std.mem.Allocator, yaml_input: []const u8) !bool {
     // Write yaml input to a temp file
-    const tmp_path = "/tmp/yaml_test_input.yaml";
-    const tmp_file = try std.fs.createFileAbsolute(tmp_path, .{});
+    const tmp_path = ".tmp/yaml_test_input.yaml";
+    const cwd = std.fs.cwd();
+    const tmp_file = try cwd.createFile(tmp_path, .{});
     defer tmp_file.close();
-    defer std.fs.deleteFileAbsolute(tmp_path) catch {};
+    defer cwd.deleteFile(tmp_path) catch {};
     
     try tmp_file.writeAll(yaml_input);
     
@@ -141,10 +148,11 @@ fn runTypescriptParser(allocator: std.mem.Allocator, yaml_input: []const u8) !bo
 
 fn runRustParser(allocator: std.mem.Allocator, yaml_input: []const u8) !bool {
     // Write yaml input to a temp file
-    const yaml_path = "/tmp/yaml_test_input.yaml";
-    const yaml_file = try std.fs.createFileAbsolute(yaml_path, .{});
+    const yaml_path = ".tmp/yaml_test_input.yaml";
+    const cwd = std.fs.cwd();
+    const yaml_file = try cwd.createFile(yaml_path, .{});
     defer yaml_file.close();
-    defer std.fs.deleteFileAbsolute(yaml_path) catch {};
+    defer cwd.deleteFile(yaml_path) catch {};
     try yaml_file.writeAll(yaml_input);
     
     // Run the pre-built Rust parser binary
