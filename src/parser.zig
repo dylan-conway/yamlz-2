@@ -884,24 +884,7 @@ pub const Parser = struct {
                 // Break if: next is whitespace/newline/EOF OR (in flow context AND next is flow indicator)
                 if (Lexer.isWhitespace(next) or Lexer.isLineBreak(next) or next == 0 or 
                     (self.in_flow_context and Lexer.isFlowIndicator(next))) {
-                    // Tabs are not allowed as indentation after ':' in block contexts
-                    // But they're OK as whitespace when mixed with spaces
-                    if (!self.in_flow_context and next == '\t') {
-                        // Check what follows the tab - if it's directly non-whitespace, that's invalid indentation
-                        var temp_pos = self.lexer.pos + 1; // Skip current char (should be ':')
-                        
-                        // Look ahead past the tab
-                        while (temp_pos < self.lexer.input.len and self.lexer.input[temp_pos] == '\t') {
-                            temp_pos += 1;
-                        }
-                        
-                        // If tab is followed directly by non-whitespace (not space), it's invalid indentation
-                        if (temp_pos < self.lexer.input.len and 
-                            !Lexer.isLineBreak(self.lexer.input[temp_pos]) and
-                            self.lexer.input[temp_pos] != ' ') {
-                            return error.TabsNotAllowed;
-                        }
-                    }
+                    // Tabs after colons are allowed as whitespace separators
                     break;
                 }
             }
@@ -1849,21 +1832,8 @@ pub const Parser = struct {
                     processing_explicit_key_value = true;
                     self.lexer.advanceChar(); // Skip ':'
                     
-                    // Check for tabs after colon - they are not allowed as indentation, 
-                    // but they are allowed as trailing whitespace (before line break or EOF)
-                    if (self.lexer.peek() == '\t') {
-                        // Look ahead to see if this tab is trailing whitespace
-                        var check_pos = self.lexer.pos;
-                        while (check_pos < self.lexer.input.len and self.lexer.input[check_pos] == '\t') {
-                            check_pos += 1;
-                        }
-                        // If tab is followed by line break or EOF, it's trailing whitespace (allowed)
-                        // If tab is followed by content, it's indentation (not allowed)
-                        if (check_pos < self.lexer.input.len and 
-                            !Lexer.isLineBreak(self.lexer.input[check_pos])) {
-                            return error.TabsNotAllowed;
-                        }
-                    }
+                    // After explicit value colon, tabs are NOT allowed
+                    try self.skipSpacesCheckTabs();
                 } else {
                     // No colon found after explicit key - this means the key has no value (null)
                     key = pkey;
@@ -2056,10 +2026,7 @@ pub const Parser = struct {
                         // Valid mapping colon on same line  
                         self.lexer.advanceChar(); // Skip ':'
                         
-                        // Check for tabs after colon - they are not allowed
-                        if (self.lexer.peek() == '\t') {
-                            return error.TabsNotAllowed;
-                        }
+                        // Tabs after colons are allowed as whitespace separators
                     } else {
                         // The colon is not a proper mapping colon, or mapping colon is on next line
                         // Skip any remaining content on this line and move to next line
@@ -2180,26 +2147,12 @@ pub const Parser = struct {
                     }
                     self.lexer.advanceChar();
                     
-                    // Check for tabs after colon - they are not allowed as indentation, 
-                    // but they are allowed as trailing whitespace (before line break or EOF)
-                    if (self.lexer.peek() == '\t') {
-                        // Look ahead to see if this tab is trailing whitespace
-                        var check_pos = self.lexer.pos;
-                        while (check_pos < self.lexer.input.len and self.lexer.input[check_pos] == '\t') {
-                            check_pos += 1;
-                        }
-                        // If tab is followed by line break or EOF, it's trailing whitespace (allowed)
-                        // If tab is followed by content, it's indentation (not allowed)
-                        if (check_pos < self.lexer.input.len and 
-                            !Lexer.isLineBreak(self.lexer.input[check_pos])) {
-                            return error.TabsNotAllowed;
-                        }
-                    }
+                    // Tabs after colons are allowed as whitespace separators
                 }
             }
             
-            if (self.lexer.peek() == ' ' or Lexer.isLineBreak(self.lexer.peek())) {
-                try self.skipSpacesCheckTabs();
+            if (self.lexer.peek() == ' ' or self.lexer.peek() == '\t' or Lexer.isLineBreak(self.lexer.peek())) {
+                self.skipSpacesAllowTabs();
                 
                 var value: ?*ast.Node = null;
                 var value_start_line = self.lexer.line; // Track the line where value parsing starts
@@ -3436,11 +3389,18 @@ pub const Parser = struct {
     }
     
     fn skipSpacesCheckTabs(self: *Parser) ParseError!void {
-        // In many contexts, tabs are not allowed where spaces are expected
+        // This version does NOT allow tabs - used after explicit key/value indicators
         while (self.lexer.peek() == ' ' or self.lexer.peek() == '\t') {
             if (self.lexer.peek() == '\t') {
                 return error.TabsNotAllowed;
             }
+            self.lexer.advanceChar();
+        }
+    }
+    
+    fn skipSpacesAllowTabs(self: *Parser) void {
+        // This version allows tabs - used after mapping colons
+        while (self.lexer.peek() == ' ' or self.lexer.peek() == '\t') {
             self.lexer.advanceChar();
         }
     }
