@@ -2082,14 +2082,23 @@ pub const Parser = struct {
         self.lexer.advanceChar(); // Skip opening quote
         
         var result = std.ArrayList(u8).init(self.arena.allocator());
+        var at_line_start = false;
         
         while (!self.lexer.isEOF()) {
             const ch = self.lexer.peek();
+            
+            // Check for document markers at the beginning of a line
+            if (at_line_start and (self.lexer.match("...") or self.lexer.match("---"))) {
+                // This is a document marker, not part of the string
+                // The string is unterminated
+                return error.UnterminatedQuotedString;
+            }
             
             if (ch == '\'') {
                 if (self.lexer.peekNext() == '\'') {
                     try result.append('\'');
                     self.lexer.advance(2);
+                    at_line_start = false;
                 } else {
                     self.lexer.advanceChar();
                     break;
@@ -2097,6 +2106,8 @@ pub const Parser = struct {
             } else {
                 try result.append(ch);
                 self.lexer.advanceChar();
+                // Track if we're at the start of a new line
+                at_line_start = (ch == '\n' or ch == '\r');
             }
         }
         
