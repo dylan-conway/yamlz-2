@@ -1714,7 +1714,7 @@ pub const Parser = struct {
             
             // Get current indent - needed by multiple code paths
             const current_indent = self.getCurrentIndent();
-            std.debug.print("DEBUG parseBlockMapping: current_indent={}, min_indent={}, peek='{c}' ({}), pos={}, line={}\n", .{current_indent, min_indent, self.lexer.peek(), self.lexer.peek(), self.lexer.pos, self.lexer.line});
+            // std.debug.print("DEBUG parseBlockMapping: current_indent={}, min_indent={}, peek='{}'\n", .{current_indent, min_indent, self.lexer.peek()});
             
             var key: ?*ast.Node = null;
             
@@ -2090,37 +2090,17 @@ pub const Parser = struct {
                     // but the current parser treats it as a nested mapping, which is incorrect
                     const saved_context = self.in_flow_context;
                     self.in_flow_context = true; // Force flow context to prevent block mapping detection
-                    std.debug.print("DEBUG: Before parseValue for mapping value, pos={}, line={}\n", .{self.lexer.pos, self.lexer.line});
                     value = try self.parseValue(current_indent);
-                    std.debug.print("DEBUG: After parseValue for mapping value, pos={}, line={}\n", .{self.lexer.pos, self.lexer.line});
                     self.in_flow_context = saved_context;
                     
                     // After parsing any value in a mapping, check for invalid nested mapping syntax
                     // like "a: 'b': c" or "a: b: c: d" which should be errors
                     const saved_pos = self.lexer.pos;
-                    std.debug.print("DEBUG: After parsing value, pos={}, line={}, next 10 chars: ", .{self.lexer.pos, self.lexer.line});
-                    var debug_i: usize = 0;
-                    while (debug_i < 10 and self.lexer.pos + debug_i < self.lexer.input.len) : (debug_i += 1) {
-                        const ch = self.lexer.input[self.lexer.pos + debug_i];
-                        if (ch == '\n') {
-                            std.debug.print("\\n", .{});
-                        } else if (ch == '\r') {
-                            std.debug.print("\\r", .{});
-                        } else {
-                            std.debug.print("{c}", .{ch});
-                        }
-                    }
-                    std.debug.print("\n", .{});
-                    
                     self.skipSpaces(); // Skip spaces but not newlines
                     
                     // If we find a ':' immediately after the value on the same line,
                     // this creates invalid nested mapping syntax
-                    // We need to check if the colon is on the same line (no newline between value and colon)
-                    if (self.lexer.peek() == ':') {
-                        // Since skipSpaces() doesn't skip newlines, if we see a colon here,
-                        // it means there was no newline between the value and the colon (invalid)
-                        std.debug.print("DEBUG: InvalidNestedMapping at line 1961, pos={}, line={}\n", .{self.lexer.pos, self.lexer.line});
+                    if (self.lexer.peek() == ':' and !Lexer.isLineBreak(self.lexer.peekAt(self.lexer.pos - 1))) {
                         return error.InvalidNestedMapping;
                     }
                     
@@ -2136,7 +2116,6 @@ pub const Parser = struct {
                                 if (i + 1 < scalar_value.len and 
                                     (scalar_value[i + 1] == ' ' or scalar_value[i + 1] == '\t')) {
                                     // This looks like mapping syntax within a plain scalar value
-                                    std.debug.print("DEBUG: InvalidNestedMapping at line 1977, scalar value contains mapping\n", .{});
                                     return error.InvalidNestedMapping;
                                 }
                             }
@@ -2163,7 +2142,6 @@ pub const Parser = struct {
                 if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and self.lexer.peek() != '#') {
                     // There's unexpected content on the line - check if it looks like invalid mapping syntax
                     if (self.lexer.peek() == ':') {
-                        std.debug.print("DEBUG: InvalidNestedMapping at line 2004, pos={}, line={}\n", .{self.lexer.pos, self.lexer.line});
                         return error.InvalidNestedMapping;
                     }
                     // For other unexpected content, restore position and let normal processing handle it
