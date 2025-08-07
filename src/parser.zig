@@ -799,7 +799,7 @@ pub const Parser = struct {
         // not just the scalar content. For mapping values, this is the mapping key's indent + 1.
         const context_indent = if (self.mapping_context_indent) |indent| indent else initial_indent;
         
-        // // std.debug.print("DEBUG: parsePlainScalar called, char='{c}' (0x{x}), pos={}, indent={}\n", .{self.lexer.peek(), self.lexer.peek(), start_pos, initial_indent});
+        // std.debug.print("DEBUG: parsePlainScalar called, char='{c}' (0x{x}), pos={}, indent={}, in_flow={}\n", .{self.lexer.peek(), self.lexer.peek(), start_pos, initial_indent, self.in_flow_context});
         
         // First, consume the first line
         while (!self.lexer.isEOF()) {
@@ -854,13 +854,16 @@ pub const Parser = struct {
         const allow_multiline = !self.isInKeyContext() and 
                                 (self.isInFlowContext() or self.mapping_context_indent == null);
         
+        // std.debug.print("DEBUG: allow_multiline={}, context={}, in_flow={}\n", .{allow_multiline, self.context, self.in_flow_context});
+        
         // Special check for invalid multiline implicit keys even when multiline is not allowed
         // This catches cases like HU3P where a plain scalar in a block mapping value
         // would contain mapping indicators on continuation lines
         // But don't apply this check when parsing inside block sequence entries (like JQ4R)
+        // Also don't apply in flow contexts where different rules apply
         if (!allow_multiline and !self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek()) and 
             self.mapping_context_indent != null and !self.parsing_explicit_key and 
-            !self.parsing_block_sequence_entry) {
+            !self.parsing_block_sequence_entry and !self.isInFlowContext()) {
             
             var temp_pos = self.lexer.pos;
             temp_pos += 1; // Skip line break
@@ -1101,8 +1104,18 @@ pub const Parser = struct {
                 // This line is part of the scalar - consume it
                 
                 // Now consume the line
+                var flow_indicator_found = false;
                 while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
                     const ch = self.lexer.peek();
+                    
+                    // In flow context, flow indicators end the scalar
+                    if (self.isInFlowContext() and Lexer.isFlowIndicator(ch)) {
+                        // Restore position to before the line break that started this continuation
+                        self.lexer.pos = line_break_pos;
+                        flow_indicator_found = true;
+                        break;
+                    }
+                    
                     if (ch == '#' and self.lexer.input[self.lexer.pos - 1] == ' ') {
                         comment_interrupted_previous_line = true;
                         // Skip to end of line
@@ -1143,6 +1156,11 @@ pub const Parser = struct {
                         end_pos = self.lexer.pos;
                     }
                 }
+                
+                // If we found a flow indicator, break out of the multiline loop
+                if (flow_indicator_found) {
+                    break;
+                }
             }
         }
         
@@ -1177,6 +1195,8 @@ pub const Parser = struct {
         } else if (std.mem.eql(u8, value, ".nan") or std.mem.eql(u8, value, ".NaN") or std.mem.eql(u8, value, ".NAN")) {
             value = ".nan";
         }
+        
+        // std.debug.print("DEBUG: parsePlainScalar done, value='{s}', final_pos={}\n", .{value, self.lexer.pos});
         
         const node = try self.arena.allocator().create(ast.Node);
         node.* = .{
@@ -1372,15 +1392,17 @@ pub const Parser = struct {
                 return error.ExpectedColonOrComma;
             }
             
-            // // std.debug.print("Debug: After parsing value, pos={}, char='{}' (0x{x})\n", .{self.lexer.pos, self.lexer.peek(), self.lexer.peek()});
+            // std.debug.print("Debug: After parsing value, pos={}, char='{}' (0x{x})\n", .{self.lexer.pos, self.lexer.peek(), self.lexer.peek()});
             
             try node.data.mapping.pairs.append(.{ .key = key.?, .value = value });
             
             try self.skipWhitespaceAndCommentsInFlow();
             
+            // std.debug.print("Debug: After skip whitespace, pos={}, char='{}' (0x{x})\n", .{self.lexer.pos, self.lexer.peek(), self.lexer.peek()});
+            
             // Check if we've reached the end of the mapping
             if (self.lexer.peek() == '}') {
-                // // std.debug.print("Debug: Found closing brace, breaking\n", .{});
+                // std.debug.print("Debug: Found closing brace, breaking\n", .{});
                 break;
             }
             
@@ -1389,6 +1411,7 @@ pub const Parser = struct {
                 try self.skipWhitespaceAndCommentsInFlow();
             } else {
                 // No comma and not closing brace - error
+                // std.debug.print("Debug: Expected comma or brace, but found '{}' (0x{x}) at pos {}\n", .{self.lexer.peek(), self.lexer.peek(), self.lexer.pos});
                 return error.ExpectedCommaOrBrace;
             }
         }
