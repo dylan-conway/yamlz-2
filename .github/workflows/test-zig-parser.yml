@@ -204,8 +204,8 @@ jobs:
               overallEmoji = unitTestHasFailed ? '⚠️' : '🚀';
               overallStatus = unitTestHasFailed ? 'Making progress, but some unit tests failing' : 'Test improvements!';
             } else {
-              yamlStatus = '📊 No change from baseline';
-              overallEmoji = unitTestHasFailed ? '⚠️' : '📊';
+              yamlStatus = 'No change from baseline';
+              overallEmoji = unitTestHasFailed ? '⚠️' : '✓';
               overallStatus = unitTestHasFailed ? 'Unit test failures' : 'No changes';
             }
           } else {
