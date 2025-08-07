@@ -2,9 +2,9 @@
 
 ## Quick Status
 
-- **Current**: 395/402 tests passing (98.3%)
+- **Current**: 397/402 tests passing (98.8%)
 - **Target**: 402/402 (100%)
-- **Gap**: 7 tests to fix
+- **Gap**: 5 tests to fix
 - **Run tests**: `./zig/zig build test-yaml -- zig`
 
 ## Project Overview
@@ -47,13 +47,11 @@ Successfully fixed 40+ tests in recent commits:
 - ✅ **BEC7**: Accept future YAML versions (1.3+) as per spec
 - ✅ **And more...**
 
-## Remaining Work (7 Failing Tests)
+## Remaining Work (5 Failing Tests)
 
 ### Current Failing Tests:
 
 - **4JVG**: Scalar value with two anchors
-- **BD7L**: Invalid mapping after sequence
-- **TD5N**: Invalid content after sequence
 - **KS4U**: Invalid content after document end
 - **9CWY**: Invalid content at wrong indentation
 - **4HVU**: Inconsistent sequence indentation
@@ -61,6 +59,8 @@ Successfully fixed 40+ tests in recent commits:
 
 ### Recently Fixed (since last update):
 
+- **BD7L**: Invalid mapping after sequence
+- **TD5N**: Invalid content after sequence
 - **UV7Q**: Tab/indentation issues
 - **7MNF**: Missing colon validation
 - **QLJ7**: Tag shorthand validation
@@ -96,6 +96,22 @@ Successfully fixed 40+ tests in recent commits:
 ./zig/zig build test-yaml -- rust        # 83.8% baseline
 ```
 
+## CI/CD & GitHub Workflows
+
+### Automated Testing
+The project has GitHub Actions workflow (`.github/workflows/test-zig-parser.yml`) that:
+- Runs on all PRs and pushes to main
+- Executes full test suite
+- Posts results as PR comments with pass/fail status
+- Tracks test improvements/regressions against baseline (currently 397)
+- Fails CI if tests drop below baseline threshold
+
+### PR Comment Features
+- Shows current passing/failing counts
+- Compares against baseline to detect regressions
+- Lists specific failing test names
+- Updates existing comment instead of creating duplicates
+
 ## Strategy for Agents
 
 ### Working with Worktrees
@@ -115,3 +131,4 @@ Create worktrees as needed for debugging specific tests: `git worktree add workt
 - Study TypeScript parser (94.8% baseline) for correct behavior
 - Use git commits frequently to track progress
 - Make targeted fixes to avoid regressions
+- CI will catch regressions automatically
