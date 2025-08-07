@@ -1,9 +1,9 @@
 # YAML Parser Implementation in Zig
 
 ## Quick Status
-- **Current**: 386/402 tests passing (96.0%)
+- **Current**: 387/402 tests passing (96.3%)
 - **Target**: 402/402 (100%)
-- **Gap**: 16 tests to fix
+- **Gap**: 15 tests to fix
 - **Run tests**: `./zig/zig build test-yaml -- zig`
 
 ## Project Overview
@@ -42,9 +42,10 @@ Successfully fixed 40+ tests in recent commits:
 - ✅ **N4JP**: Fixed bad indentation in mappings
 - ✅ **2SXE**: Fixed anchors with colons
 - ✅ **E76Z**: Fixed anchor on implicit key
+- ✅ **BEC7**: Accept future YAML versions (1.3+) as per spec
 - ✅ **And more...**
 
-## Remaining Work (16 Failing Tests)
+## Remaining Work (15 Failing Tests)
 
 ### Current Failing Tests:
 - **UV7Q**: Tab/indentation issues
@@ -59,7 +60,6 @@ Successfully fixed 40+ tests in recent commits:
 - **9CWY**: Invalid content at wrong indentation
 - **U44R**: Bad indentation in mappings
 - **4HVU**: Inconsistent sequence indentation
-- **BEC7**: Invalid directive position
 - **6S55**: Invalid content validation
 - **BS4K**: Comment between plain scalar lines
 - **Q9WF**: Directive with non-printable character
