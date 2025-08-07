@@ -75,7 +75,7 @@ jobs:
         echo "EOF" >> $GITHUB_ENV
         
         # Get baseline passing tests (from main branch)
-        echo "BASELINE_PASSING=391" >> $GITHUB_ENV
+        echo "BASELINE_PASSING=395" >> $GITHUB_ENV
     
     - name: Comment PR with results
       if: github.event_name == 'pull_request' && always()
@@ -85,7 +85,7 @@ jobs:
           const passing = process.env.PASSING || 'N/A';
           const failing = process.env.FAILING || 'N/A';
           const failingTests = process.env.FAILING_TESTS || '';
-          const baseline = parseInt(process.env.BASELINE_PASSING || '391');
+          const baseline = parseInt(process.env.BASELINE_PASSING || '395');
           const currentPassing = parseInt(passing.split(' ')[0]) || 0;
           const improvement = currentPassing - baseline;
           
@@ -160,7 +160,7 @@ jobs:
         PASS_COUNT=$(grep "Passing:" test-results.txt | awk '{print $2}')
         
         # Minimum threshold (current baseline)
-        MIN_PASSING=391
+        MIN_PASSING=395
         
         if [ "$PASS_COUNT" -lt "$MIN_PASSING" ]; then
           echo "❌ Test regression detected!"
