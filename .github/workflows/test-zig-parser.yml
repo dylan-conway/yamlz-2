@@ -236,8 +236,6 @@ jobs:
           
           let commentBody = `## ${overallEmoji} Test Results
           
-          ___
-          
           ${overallStatus}
           
           ---

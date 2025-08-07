@@ -140,6 +140,11 @@ test "parser: simple key-value mapping" {
     try validateWithAllParsers("key: value", false);
 }
 
+test "parser: intentionally failing test for CI" {
+    // This test should fail to show CI formatting
+    try validateWithAllParsers("invalid: { broken yaml", true);
+}
+
 test "parser: nested mapping" {
     try validateWithAllParsers("parent:\n  child: value", false);
 }
