@@ -110,14 +110,18 @@ jobs:
             # If tests failed, show which ones
             if grep -q "failed" unit-test-output.txt; then
               echo "" >> $GITHUB_STEP_SUMMARY
-              echo "Failed tests:" >> $GITHUB_STEP_SUMMARY
+              echo "#### Failed tests:" >> $GITHUB_STEP_SUMMARY
               echo '```' >> $GITHUB_STEP_SUMMARY
               grep "error:" unit-test-output.txt | grep "test\." | head -10 >> $GITHUB_STEP_SUMMARY || true
               echo '```' >> $GITHUB_STEP_SUMMARY
               
               # Extract failing test names for PR comment
               echo "FAILING_UNIT_TESTS<<EOF" >> $GITHUB_ENV
-              grep "error:" unit-test-output.txt | grep "test\." | sed "s/.*test\.\(.*\)'.*/  - \1/" | head -10 >> $GITHUB_ENV || true
+              # Look for test failures in both build output and parser test details
+              if [ -f parser-test-details.txt ]; then
+                grep "FAIL" parser-test-details.txt | sed 's/.*test\.\(.*\)\.\.\./  - \1/' | head -10 >> $GITHUB_ENV || true
+              fi
+              grep "'.*' failed:" unit-test-output.txt | sed "s/.*'\(.*\)' failed.*/  - \1/" | head -10 >> $GITHUB_ENV || true
               echo "EOF" >> $GITHUB_ENV
             fi
           else
@@ -197,15 +201,32 @@ jobs:
             }
           }
           
+          // Parse unit test summary for better formatting
+          let unitTestDisplay = unitTestSummary;
+          if (unitTestSummary.includes('Build Summary:')) {
+            // Extract the numbers from "Build Summary: X/Y steps succeeded; A/B tests passed"
+            const match = unitTestSummary.match(/(\d+)\/(\d+) tests passed(?:; (\d+) failed)?/);
+            if (match) {
+              const passed = match[1];
+              const total = match[2];
+              const failed = match[3] || '0';
+              if (failed === '0') {
+                unitTestDisplay = `✅ **${passed}/${total}** tests passed`;
+              } else {
+                unitTestDisplay = `⚠️ **${passed}/${total}** tests passed, **${failed}** failed`;
+              }
+            }
+          }
+          
           let commentBody = `## ${statusEmoji} Test Results
           
           ${statusText}
           
           ### Unit Tests
-          ${unitTestSummary}`;
+          ${unitTestDisplay}`;
           
           if (failingUnitTests.trim()) {
-            commentBody += `\n\n**Failing Unit Tests:**\n${failingUnitTests}`;
+            commentBody += `\n\n**Failing tests:**\n${failingUnitTests}`;
           }
           
           commentBody += `\n\n### YAML Test Suite
@@ -218,7 +239,7 @@ jobs:
           }
           
           if (failingTests.trim()) {
-            commentBody += `\n\n### Failing Tests\n${failingTests}`;
+            commentBody += `\n\n**Failing tests:**\n${failingTests}`;
           }
           
           // Add a hidden marker to identify our bot comments
