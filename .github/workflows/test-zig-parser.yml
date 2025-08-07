@@ -16,6 +16,11 @@ on:
       - 'test_runner.py'
       - '.github/workflows/test-zig-parser.yml'
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -39,7 +44,7 @@ jobs:
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v2
       with:
-        version: 0.13.0
+        version: 0.14.1
     
     - name: Build Zig parser
       run: |
@@ -58,11 +63,19 @@ jobs:
         tail -20 test-results.txt >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
         
-        # Extract pass/fail counts for PR comment
+        # Extract pass/fail counts and test lists for PR comment
         PASSING=$(grep "Passing:" test-results.txt | awk '{print $2, $3}')
         FAILING=$(grep "Failing:" test-results.txt | awk '{print $2}')
         echo "PASSING=$PASSING" >> $GITHUB_ENV
         echo "FAILING=$FAILING" >> $GITHUB_ENV
+        
+        # Extract failing test names
+        echo "FAILING_TESTS<<EOF" >> $GITHUB_ENV
+        grep "^  - " test-results.txt | head -20 >> $GITHUB_ENV
+        echo "EOF" >> $GITHUB_ENV
+        
+        # Get baseline passing tests (from main branch)
+        echo "BASELINE_PASSING=391" >> $GITHUB_ENV
     
     - name: Comment PR with results
       if: github.event_name == 'pull_request' && always()
@@ -71,20 +84,75 @@ jobs:
         script: |
           const passing = process.env.PASSING || 'N/A';
           const failing = process.env.FAILING || 'N/A';
+          const failingTests = process.env.FAILING_TESTS || '';
+          const baseline = parseInt(process.env.BASELINE_PASSING || '391');
+          const currentPassing = parseInt(passing.split(' ')[0]) || 0;
+          const improvement = currentPassing - baseline;
           
-          const comment = `### YAML Test Suite Results
+          let statusEmoji = '✅';
+          let statusText = 'All tests passing!';
           
+          if (failing !== '0' && failing !== 'N/A') {
+            if (currentPassing < baseline) {
+              statusEmoji = '❌';
+              statusText = `Regression detected! ${baseline - currentPassing} fewer tests passing than baseline.`;
+            } else if (currentPassing > baseline) {
+              statusEmoji = '🚀';
+              statusText = `Progress! ${improvement} more tests passing than baseline.`;
+            } else {
+              statusEmoji = '📊';
+              statusText = 'No change from baseline.';
+            }
+          }
+          
+          let commentBody = `## ${statusEmoji} YAML Test Suite Results
+          
+          ${statusText}
+          
+          ### Summary
           - **Passing**: ${passing}
           - **Failing**: ${failing}
+          - **Baseline**: ${baseline} passing`;
           
-          Run \`./zig/zig build test-yaml -- zig --verbose\` locally to see detailed results.`;
+          if (improvement > 0) {
+            commentBody += `\n- **Improvement**: +${improvement} tests now passing! 🎉`;
+          }
           
-          github.rest.issues.createComment({
-            issue_number: context.issue.number,
+          if (failingTests.trim()) {
+            commentBody += `\n\n### Failing Tests\n${failingTests}`;
+          }
+          
+          // Add a hidden marker to identify our bot comments
+          commentBody += '\n\n<!-- yaml-test-suite-results -->';
+          
+          // Find existing comment
+          const { data: comments } = await github.rest.issues.listComments({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            body: comment
+            issue_number: context.issue.number
           });
+          
+          const botComment = comments.find(comment => 
+            comment.body.includes('<!-- yaml-test-suite-results -->')
+          );
+          
+          if (botComment) {
+            // Update existing comment
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: botComment.id,
+              body: commentBody
+            });
+          } else {
+            // Create new comment
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: commentBody
+            });
+          }
     
     - name: Check test threshold
       run: |
