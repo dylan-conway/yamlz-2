@@ -64,30 +64,30 @@ jobs:
         # Capture YAML test suite results
         zig build test-yaml -- zig --verbose > test-results.txt 2>&1 || true
         
-        # Run cross-parser unit tests
-        zig build test-unit -- zig > unit-test-results.txt 2>&1 || true
-        
         # Add to GitHub step summary
         echo "## Test Results" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         
-        # Report unit test summary
-        echo "### Unit Tests (Cross-Parser Validation)" >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
-        tail -20 unit-test-results.txt >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        
-        # Report individual test failures from zig test
-        echo "### Native Zig Tests" >> $GITHUB_STEP_SUMMARY
-        if grep -q "All .* tests passed" unit-test-output.txt; then
-          echo "✅ All tests passed!" >> $GITHUB_STEP_SUMMARY
+        # Report unit test summary from zig build test
+        echo "### Unit Tests" >> $GITHUB_STEP_SUMMARY
+        if [ -f unit-test-output.txt ]; then
+          if grep -q "All .* tests passed" unit-test-output.txt; then
+            echo "✅ All tests passed!" >> $GITHUB_STEP_SUMMARY
+            UNIT_TEST_SUMMARY="✅ All unit tests passed"
+          elif grep -q "Build Summary:" unit-test-output.txt; then
+            # Extract summary from build output
+            SUMMARY=$(grep "Build Summary:" unit-test-output.txt | head -1)
+            echo "$SUMMARY" >> $GITHUB_STEP_SUMMARY
+            UNIT_TEST_SUMMARY="$SUMMARY"
+          else
+            echo "Unit tests ran with issues. Check logs for details." >> $GITHUB_STEP_SUMMARY
+            UNIT_TEST_SUMMARY="Unit tests: check logs for details"
+          fi
         else
-          echo "Failed tests:" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          grep "error:" unit-test-output.txt | head -10 >> $GITHUB_STEP_SUMMARY || echo "No errors captured" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "Unit tests were not run." >> $GITHUB_STEP_SUMMARY
+          UNIT_TEST_SUMMARY="Unit tests: not run"
         fi
+        echo "UNIT_TEST_SUMMARY=$UNIT_TEST_SUMMARY" >> $GITHUB_ENV
         echo "" >> $GITHUB_STEP_SUMMARY
         
         # Report YAML test suite
@@ -107,15 +107,8 @@ jobs:
         grep "^  - " test-results.txt | head -20 >> $GITHUB_ENV
         echo "EOF" >> $GITHUB_ENV
         
-        # Extract unit test summary
-        UNIT_PASSING=$(grep "Passing:" unit-test-results.txt | awk '{print $2}')
-        UNIT_FAILING=$(grep "Failing:" unit-test-results.txt | awk '{print $2}')
-        UNIT_TOTAL=$(grep "Total tests:" unit-test-results.txt | awk '{print $3}')
-        echo "UNIT_TEST_SUMMARY=Unit tests: $UNIT_PASSING/$UNIT_TOTAL passing" >> $GITHUB_ENV
-        
-        # Extract failing unit test names if any
+        # No separate failing unit tests extraction since we use zig build test
         echo "FAILING_UNIT_TESTS<<EOF" >> $GITHUB_ENV
-        sed -n '/Failing tests:/,/Success rate:/p' unit-test-results.txt | grep "^  - " | head -10 >> $GITHUB_ENV || true
         echo "EOF" >> $GITHUB_ENV
         
         # Get baseline passing tests (from main branch)
