@@ -1,0 +1,39 @@
+        if (self.lexer.peek() == '}') {
+            self.lexer.advanceChar();
+            
+            // After closing a flow mapping, check for invalid content on the same line
+            // when not in flow context (i.e., when in block context)
+            if (!self.isInFlowContext()) {
+                // Skip whitespace first
+                const saved_pos = self.lexer.pos;
+                self.skipSpaces();
+                
+                // Check what comes after whitespace
+                if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
+                    const ch = self.lexer.peek();
+                    // Comments starting with # are allowed (with space)
+                    if (ch == '#') {
+                        // Check for comment immediately after closing brace (no space) - this is invalid
+                        if (saved_pos == self.lexer.pos) {
+                            return error.InvalidComment;
+                        }
+                        // Comment with space is OK, restore position
+                        self.lexer.pos = saved_pos;
+                    } else {
+                        // Any other content after flow mapping close is invalid
+                        // This catches cases like "{ y: z }- invalid"
+                        return error.InvalidContent;
+                    }
+                } else {
+                    // At EOL/EOF, restore position
+                    self.lexer.pos = saved_pos;
+                }
+            } else {
+                // In flow context, just check for immediate comment (original behavior)
+                if (!self.lexer.isEOF() and self.lexer.peek() == '#') {
+                    return error.InvalidComment;
+                }
+            }
+        } else {
+            return error.ExpectedCloseBrace;
+        }
