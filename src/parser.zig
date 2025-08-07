@@ -3687,6 +3687,29 @@ pub const Parser = struct {
                         if (ch == ']' or ch == '}') {
                             return error.UnexpectedCharacter;
                         }
+                        // For sequence documents, disallow additional content that starts
+                        // at column 0 without a '-' indicator (BD7L case)
+                        if (document.root) |root_node| {
+                            if (root_node.type == .sequence) {
+                                var idx = self.lexer.pos;
+                                const len = self.lexer.input.len;
+                                while (idx < len) : (idx += 1) {
+                                    const c = self.lexer.input[idx];
+                                    if (c == '\n' or c == '\r') {
+                                        idx += 1;
+                                        var j = idx;
+                                        while (j < len and self.lexer.input[j] == ' ') j += 1;
+                                        if (j < len) {
+                                            const la = self.lexer.input[j];
+                                            if (j == idx and std.ascii.isAlphanumeric(la)) {
+                                                return error.UnexpectedContent;
+                                            }
+                                        }
+                                        idx = j - 1; // adjust for loop increment
+                                    }
+                                }
+                            }
+                        }
                     }
                     
                     break; // Only parse one value per document
