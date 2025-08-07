@@ -50,6 +50,10 @@ jobs:
       run: |
         zig build
     
+    - name: Run unit tests
+      run: |
+        zig build test --summary all
+    
     - name: Run YAML test suite
       run: |
         zig build test-yaml -- zig
@@ -57,8 +61,21 @@ jobs:
     - name: Generate test report
       if: always()
       run: |
+        # Capture unit test results
+        zig build test --summary all 2>&1 | tee unit-test-results.txt
+        
+        # Capture YAML test suite results
         zig build test-yaml -- zig --verbose > test-results.txt 2>&1
-        echo "## YAML Test Suite Results" >> $GITHUB_STEP_SUMMARY
+        
+        # Add to GitHub step summary
+        echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Unit Tests" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        tail -5 unit-test-results.txt >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### YAML Test Suite" >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
         tail -20 test-results.txt >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
@@ -74,6 +91,10 @@ jobs:
         grep "^  - " test-results.txt | head -20 >> $GITHUB_ENV
         echo "EOF" >> $GITHUB_ENV
         
+        # Extract unit test summary
+        UNIT_TEST_SUMMARY=$(grep "Build Summary:" unit-test-results.txt || echo "Unit tests: unknown")
+        echo "UNIT_TEST_SUMMARY=$UNIT_TEST_SUMMARY" >> $GITHUB_ENV
+        
         # Get baseline passing tests (from main branch)
         echo "BASELINE_PASSING=395" >> $GITHUB_ENV
     
@@ -85,6 +106,7 @@ jobs:
           const passing = process.env.PASSING || 'N/A';
           const failing = process.env.FAILING || 'N/A';
           const failingTests = process.env.FAILING_TESTS || '';
+          const unitTestSummary = process.env.UNIT_TEST_SUMMARY || 'Unit tests: not run';
           const baseline = parseInt(process.env.BASELINE_PASSING || '395');
           const currentPassing = parseInt(passing.split(' ')[0]) || 0;
           const improvement = currentPassing - baseline;
@@ -105,11 +127,14 @@ jobs:
             }
           }
           
-          let commentBody = `## ${statusEmoji} YAML Test Suite Results
+          let commentBody = `## ${statusEmoji} Test Results
           
           ${statusText}
           
-          ### Summary
+          ### Unit Tests
+          ${unitTestSummary}
+          
+          ### YAML Test Suite
           - **Passing**: ${passing}
           - **Failing**: ${failing}
           - **Baseline**: ${baseline} passing`;

@@ -3828,3 +3828,15 @@ test "parser handles CR line endings" {
     try std.testing.expectEqualStrings("key2", map.pairs.items[1].key.data.scalar.value);
     try std.testing.expectEqualStrings("value2", map.pairs.items[1].value.data.scalar.value);
 }
+
+test "intentionally failing test to check CI output" {
+    const input = "test: value";
+    var doc = try parse(input);
+    defer doc.deinit();
+    try std.testing.expect(doc.root != null);
+    const root = doc.root.?;
+    try std.testing.expect(root.type == .mapping);
+    const map = root.data.mapping;
+    // This should fail - expecting wrong value
+    try std.testing.expectEqualStrings("wrong_value", map.pairs.items[0].value.data.scalar.value);
+}
