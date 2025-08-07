@@ -185,20 +185,36 @@ jobs:
           const currentPassing = parseInt(passing.split(' ')[0]) || 0;
           const improvement = currentPassing - baseline;
           
-          let statusEmoji = '✅';
-          let statusText = 'All tests passing!';
+          // Determine overall status based on both test suites
+          let overallEmoji = '✅';
+          let overallStatus = 'All tests passing!';
           
+          // Check unit test status
+          const unitTestHasFailed = unitTestSummary.includes('failed') && !unitTestSummary.includes('0 failed');
+          
+          // Check YAML test suite status
+          let yamlStatus = '';
           if (failing !== '0' && failing !== 'N/A') {
             if (currentPassing < baseline) {
-              statusEmoji = '❌';
-              statusText = `Regression detected! ${baseline - currentPassing} fewer tests passing than baseline.`;
+              yamlStatus = `❌ Regression: ${baseline - currentPassing} fewer tests passing than baseline`;
+              overallEmoji = '❌';
+              overallStatus = 'Test regressions detected';
             } else if (currentPassing > baseline) {
-              statusEmoji = '🚀';
-              statusText = `Progress! ${improvement} more tests passing than baseline.`;
+              yamlStatus = `🚀 Progress: ${improvement} more tests passing than baseline`;
+              overallEmoji = unitTestHasFailed ? '⚠️' : '🚀';
+              overallStatus = unitTestHasFailed ? 'Making progress, but some unit tests failing' : 'Test improvements!';
             } else {
-              statusEmoji = '📊';
-              statusText = 'No change from baseline.';
+              yamlStatus = '📊 No change from baseline';
+              overallEmoji = unitTestHasFailed ? '⚠️' : '📊';
+              overallStatus = unitTestHasFailed ? 'Unit test failures' : 'No changes';
             }
+          } else {
+            yamlStatus = '✅ All YAML tests passing!';
+          }
+          
+          if (unitTestHasFailed && overallEmoji === '✅') {
+            overallEmoji = '⚠️';
+            overallStatus = 'Unit test failures';
           }
           
           // Parse unit test summary for better formatting
@@ -218,21 +234,23 @@ jobs:
             }
           }
           
-          let commentBody = `## ${statusEmoji} Test Results
+          let commentBody = `## ${overallEmoji} Test Results
           
-          ${statusText}
+          ${overallStatus}
           
-          ### Unit Tests
+          ---
+          
+          ### 🧪 Unit Tests
           ${unitTestDisplay}`;
           
           if (failingUnitTests.trim()) {
             commentBody += `\n\n**Failing tests:**\n${failingUnitTests}`;
           }
           
-          commentBody += `\n\n### YAML Test Suite
-          - **Passing**: ${passing}
-          - **Failing**: ${failing}
-          - **Baseline**: ${baseline} passing`;
+          commentBody += `\n\n---\n\n### 📋 YAML Test Suite\n${yamlStatus}\n\n`;
+          commentBody += `- **Passing**: ${passing}\n`;
+          commentBody += `- **Failing**: ${failing}\n`;
+          commentBody += `- **Baseline**: ${baseline} passing`;
           
           if (improvement > 0) {
             commentBody += `\n- **Improvement**: +${improvement} tests now passing! 🎉`;
