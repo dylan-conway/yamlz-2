@@ -238,8 +238,6 @@ jobs:
           
           ${overallStatus}
           
-          ---
-          
           ### 🧪 Unit Tests
           ${unitTestDisplay}`;
           
