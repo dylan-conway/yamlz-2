@@ -114,6 +114,14 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const run_parser_tests = b.addRunArtifact(parser_tests);
+    
+    // Add comprehensive parser tests that validate against multiple parsers
+    const parser_validation_tests = b.addTest(.{
+        .root_source_file = b.path("src/parser_tests.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const run_parser_validation_tests = b.addRunArtifact(parser_validation_tests);
 
     const lexer_tests = b.addTest(.{
         .root_source_file = b.path("src/lexer.zig"),
@@ -136,6 +144,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_lib_unit_tests.step);
     test_step.dependOn(&run_exe_unit_tests.step);
     test_step.dependOn(&run_parser_tests.step);
+    test_step.dependOn(&run_parser_validation_tests.step);
     test_step.dependOn(&run_lexer_tests.step);
     test_step.dependOn(&run_ast_tests.step);
     
