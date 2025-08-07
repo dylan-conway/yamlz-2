@@ -140,11 +140,6 @@ test "parser: simple key-value mapping" {
     try validateWithAllParsers("key: value", false);
 }
 
-test "parser: intentionally failing test for CI" {
-    // This test should fail to show CI formatting
-    // Using an actually invalid YAML that all parsers reject
-    try testing.expectEqual(@as(u32, 1), @as(u32, 2));
-}
 
 test "parser: nested mapping" {
     try validateWithAllParsers("parent:\n  child: value", false);
