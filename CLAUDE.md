@@ -1,9 +1,9 @@
 # YAML Parser Implementation in Zig
 
 ## Quick Status
-- **Current**: 371/402 tests passing (92.3%)
+- **Current**: 386/402 tests passing (96.0%)
 - **Target**: 402/402 (100%)
-- **Gap**: 31 tests to fix
+- **Gap**: 16 tests to fix
 - **Run tests**: `./zig/zig build test-yaml -- zig`
 
 ## Project Overview
@@ -12,34 +12,57 @@ A YAML 1.2 parser in Zig using recursive descent parsing. The goal is 100% passi
 
 ## Recent Progress
 
-Successfully fixed 14 tests total:
+Successfully fixed 40+ tests in recent commits:
 - ✅ **3HFZ**: Reject content after document end marker
-- ✅ **6S55**: Invalid content validation  
 - ✅ **7A4E**: Allow tabs in double-quoted strings
 - ✅ **7LBH**: Multiline key rejection
-- ✅ **7MNF**: Missing colon validation
-- ✅ **9CWY**: Invalid content at wrong indentation
 - ✅ **9HCY**: Directive after content validation
 - ✅ **9MMA**: Directive without document
 - ✅ **C2SP**: Multiline flow sequence as key
 - ✅ **D49Q**: Multiline single quoted key
 - ✅ **DK4H**: Implicit key with newline
 - ✅ **DMG6**: Wrong indentation validation
-- ✅ **+2 tests**: Fixed by improved anchor handling for mapping keys
+- ✅ **ZXT5**: Fixed multiline key detection in flow sequences
+- ✅ **ZF4X**: Fixed multiline flow mappings
+- ✅ **VJP3**: Fixed flow collections spanning multiple lines
+- ✅ **UT92**: Fixed multiline plain scalars in flow key context
+- ✅ **U99R**: Fixed comma validation after tags
+- ✅ **SY6V**: Fixed anchor validation before block sequence entries
+- ✅ **SF5V**: Fixed duplicate YAML directive detection
+- ✅ **RXY3**: Fixed document marker detection in quoted strings
+- ✅ **P2EQ**: Fixed invalid content after flow collections
+- ✅ **MUS6**: Fixed directive variant validation
+- ✅ **LHL4**: Fixed tag validation with flow indicators
+- ✅ **H7TQ**: Fixed extra words on YAML directive
+- ✅ **G9HC**: Fixed anchor validation at zero indentation
+- ✅ **FH7J**: Fixed tags on empty scalars
+- ✅ **9C9N**: Fixed flow sequence indentation validation
+- ✅ **62EZ**: Fixed invalid block mapping key on same line
+- ✅ **EB22**: Fixed directive after content
+- ✅ **N4JP**: Fixed bad indentation in mappings
+- ✅ **2SXE**: Fixed anchors with colons
+- ✅ **E76Z**: Fixed anchor on implicit key
+- ✅ **And more...**
 
-## Remaining Work (31 Failing Tests)
+## Remaining Work (16 Failing Tests)
 
-### 🎯 Priority: "Too Restrictive" Tests (8 tests)
-Valid YAML being incorrectly rejected:
-- **2SXE** (anchors with colons), **E76Z** (anchor on implicit key), **FH7J**, **J3BT**, **UT92**, **VJP3**, **ZF4X**
-
-### ⚠️ "Too Permissive" Tests (23 tests)
-Invalid YAML being incorrectly accepted:
-- **4HVU**, **4JVG** (anchor on key), **62EZ**, **9C9N** (flow sequence indentation)
-- **BD7L** (multi-document validation), **BS4K**, **EB22**, **G9HC**, **H7TQ**
-- **KS4U**, **LHL4**, **MUS6**, **N4JP**, **P2EQ**
-- **QLJ7**, **RXY3**, **SF5V**, **SY6V**, **TD5N**
-- **U44R**, **U99R**, **UV7Q**, **ZXT5**
+### Current Failing Tests:
+- **UV7Q**: Tab/indentation issues
+- **XLQ9**: Invalid scalar after document marker
+- **4JVG**: Scalar value with two anchors
+- **BD7L**: Invalid mapping after sequence
+- **TD5N**: Invalid content after sequence
+- **J3BT**: Tab handling after colons
+- **7MNF**: Missing colon validation
+- **KS4U**: Invalid content after document end
+- **QLJ7**: Tag shorthand validation
+- **9CWY**: Invalid content at wrong indentation
+- **U44R**: Bad indentation in mappings
+- **4HVU**: Inconsistent sequence indentation
+- **BEC7**: Invalid directive position
+- **6S55**: Invalid content validation
+- **BS4K**: Comment between plain scalar lines
+- **Q9WF**: Directive with non-printable character
 
 ## Key Resources
 
@@ -79,7 +102,7 @@ Create worktrees as needed for debugging specific tests: `git worktree add workt
 4. **Revert if broken** - if a fix doesn't work, revert immediately
 
 ### Key Principles
-- **Too restrictive issues** (8 tests) = loosening validation to accept valid YAML
-- **Too permissive issues** (35 tests) = adding validation to reject invalid YAML - **PRIMARY FOCUS**
-- Study TypeScript parser (99.3% baseline) for correct behavior
+- Most remaining tests are "too permissive" issues - adding validation to reject invalid YAML
+- Study TypeScript parser (94.8% baseline) for correct behavior
 - Use git commits frequently to track progress
+- Make targeted fixes to avoid regressions
