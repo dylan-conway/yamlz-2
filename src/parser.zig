@@ -3447,9 +3447,10 @@ pub const Parser = struct {
                 continue;
             }
             
-            // If there's more content without explicit markers, it might be another bare document
-            // But for now, let's be conservative and stop here
-            break;
+            // If there's more content without explicit markers, it's invalid
+            // YAML doesn't allow multiple bare documents without document markers
+            // This catches the BS4K case: plain scalar followed by comment, then another scalar
+            return error.InvalidDocumentStructure;
         }
         
         return stream;
