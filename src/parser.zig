@@ -232,8 +232,43 @@ pub const Parser = struct {
             
             const version = self.lexer.input[version_start..version_end];
             
-            // Support both YAML 1.1 and 1.2
-            if (!std.mem.eql(u8, version, "1.1") and !std.mem.eql(u8, version, "1.2")) {
+            // Parse version as major.minor
+            // Accept YAML 1.1, 1.2 as supported
+            // Accept YAML 1.3+ (future versions) with a warning (parse as 1.2)
+            // Reject versions < 1.1
+            
+            // Simple version check: split on '.'
+            var dot_pos: ?usize = null;
+            for (version, 0..) |c, i| {
+                if (c == '.') {
+                    dot_pos = i;
+                    break;
+                }
+            }
+            
+            if (dot_pos) |pos| {
+                const major_str = version[0..pos];
+                const minor_str = version[pos + 1..];
+                
+                // Parse major and minor version numbers
+                const major = std.fmt.parseInt(u32, major_str, 10) catch {
+                    return error.UnsupportedYamlVersion;
+                };
+                const minor = std.fmt.parseInt(u32, minor_str, 10) catch {
+                    return error.UnsupportedYamlVersion;
+                };
+                
+                // Accept YAML 1.x where x >= 1
+                // Reject YAML 0.x or 2.x+
+                if (major != 1) {
+                    return error.UnsupportedYamlVersion;
+                }
+                if (minor < 1) {
+                    return error.UnsupportedYamlVersion;
+                }
+                // Accept 1.1, 1.2, 1.3, etc. (1.3+ are treated as 1.2)
+            } else {
+                // No dot found - invalid version format
                 return error.UnsupportedYamlVersion;
             }
         } else if (std.mem.eql(u8, directive_name, "TAG")) {
