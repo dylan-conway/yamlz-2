@@ -16,6 +16,11 @@ on:
       - 'test_runner.py'
       - '.github/workflows/test-zig-parser.yml'
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -77,7 +82,7 @@ jobs:
           - **Passing**: ${passing}
           - **Failing**: ${failing}
           
-          Run \`./zig/zig build test-yaml -- zig --verbose\` locally to see detailed results.`;
+          Run \`zig build test-yaml -- zig --verbose\` locally to see detailed results.`;
           
           github.rest.issues.createComment({
             issue_number: context.issue.number,
