@@ -1531,6 +1531,10 @@ pub const Parser = struct {
                         }
                         // Comment with space is OK
                         self.lexer.pos = saved_pos;
+                    } else if (ch == ':') {
+                        // A colon after flow mapping is valid - makes it a mapping key
+                        // e.g., "{ first: Sammy, last: Sosa }: value"
+                        self.lexer.pos = saved_pos;
                     } else {
                         // Any other content after flow mapping close in block context is invalid
                         // This catches cases like "{ y: z }- invalid"
