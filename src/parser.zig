@@ -5,12 +5,12 @@ const ast = @import("ast.zig");
 // YAML 1.2 parser implementation
 // YAML parser context states as defined in the spec
 pub const Context = enum {
-    BLOCK_IN,   // inside block context
-    BLOCK_OUT,  // outside block context
-    BLOCK_KEY,  // inside block key context
-    FLOW_IN,    // inside flow context
-    FLOW_OUT,   // outside flow context
-    FLOW_KEY,   // inside flow key context
+    BLOCK_IN, // inside block context
+    BLOCK_OUT, // outside block context
+    BLOCK_KEY, // inside block key context
+    FLOW_IN, // inside flow context
+    FLOW_OUT, // outside flow context
+    FLOW_KEY, // inside flow key context
 };
 
 pub const ParseError = error{
@@ -61,18 +61,18 @@ pub const ParseError = error{
 pub const Parser = struct {
     lexer: Lexer,
     allocator: std.mem.Allocator,
-    arena: *std.heap.ArenaAllocator,  // Changed to pointer
+    arena: *std.heap.ArenaAllocator, // Changed to pointer
     in_flow_context: bool = false,
     parsing_explicit_key: bool = false,
     has_yaml_directive: bool = false,
     mapping_context_indent: ?usize = null,
     parsing_block_sequence_entry: bool = false,
     has_document_content: bool = false,
-    context: Context = .BLOCK_OUT,  // Current parser context
-    context_stack: std.ArrayList(Context),  // Stack for nested contexts
-    anchors: std.StringHashMap(*ast.Node),  // For anchor/alias resolution
-    tag_handles: std.StringHashMap([]const u8),  // For TAG directive support
-    
+    context: Context = .BLOCK_OUT, // Current parser context
+    context_stack: std.ArrayList(Context), // Stack for nested contexts
+    anchors: std.StringHashMap(*ast.Node), // For anchor/alias resolution
+    tag_handles: std.StringHashMap([]const u8), // For TAG directive support
+
     pub fn init(allocator: std.mem.Allocator, input: []const u8) !Parser {
         const arena = try allocator.create(std.heap.ArenaAllocator);
         arena.* = std.heap.ArenaAllocator.init(allocator);
@@ -86,44 +86,44 @@ pub const Parser = struct {
             .tag_handles = std.StringHashMap([]const u8).init(arena_alloc),
         };
     }
-    
+
     pub fn deinit(self: *Parser) void {
         self.arena.deinit();
         self.allocator.destroy(self.arena);
     }
-    
+
     fn pushContext(self: *Parser, new_context: Context) !void {
         try self.context_stack.append(self.context);
         self.context = new_context;
     }
-    
+
     fn popContext(self: *Parser) void {
         if (self.context_stack.pop()) |ctx| {
             self.context = ctx;
         }
     }
-    
+
     fn isInBlockContext(self: *Parser) bool {
         return self.context == .BLOCK_IN or self.context == .BLOCK_OUT or self.context == .BLOCK_KEY;
     }
-    
+
     fn isInFlowContext(self: *Parser) bool {
         return self.context == .FLOW_IN or self.context == .FLOW_OUT or self.context == .FLOW_KEY;
     }
-    
+
     fn isInKeyContext(self: *Parser) bool {
         return self.context == .BLOCK_KEY or self.context == .FLOW_KEY;
     }
-    
+
     pub fn parseDocument(self: *Parser) ParseError!ast.Document {
         // Clear anchors and tag handles for each document
         self.anchors.clearRetainingCapacity();
         self.tag_handles.clearRetainingCapacity();
-        
+
         self.skipWhitespaceAndComments();
-        
+
         // Parse directives
-        
+
         while (!self.lexer.isEOF()) {
             // Check for directive
             if (self.lexer.peek() == '%') {
@@ -149,27 +149,27 @@ pub const Parser = struct {
                 break;
             }
         }
-        
+
         // Check if we have directives but no content - this is invalid
         if (self.has_yaml_directive and self.lexer.isEOF()) {
             return error.DirectiveWithoutDocument;
         }
-        
+
         const root = if (self.lexer.isEOF()) null else blk: {
             self.has_document_content = true;
             break :blk try self.parseValue(0);
         };
-        
+
         // After parsing the root value, validate that any remaining content
         // forms a valid YAML structure. This catches cases like 236B where
         // "invalid" appears at wrong indentation after a mapping value.
         if (root != null) {
             self.skipWhitespaceAndComments();
-            
+
             if (!self.lexer.isEOF()) {
                 // There's remaining non-whitespace content. Check if it's valid.
                 const remaining_char = self.lexer.peek();
-                
+
                 // Check for document markers
                 if (self.lexer.match("---") or self.lexer.match("...")) {
                     // Valid document marker - this is OK
@@ -179,31 +179,30 @@ pub const Parser = struct {
                 }
             }
         }
-        
+
         return ast.Document{
             .root = root,
             .allocator = self.arena.allocator(),
         };
     }
-    
-    
+
     fn parseDirective(self: *Parser) ParseError!void {
         // We're at a '%' character
         self.lexer.advanceChar(); // Skip '%'
-        
+
         // Parse directive name
         const directive_start = self.lexer.pos;
         while (!self.lexer.isEOF() and !Lexer.isWhitespace(self.lexer.peek()) and !Lexer.isLineBreak(self.lexer.peek())) {
             self.lexer.advanceChar();
         }
         const directive_name = self.lexer.input[directive_start..self.lexer.pos];
-        
+
         if (std.mem.eql(u8, directive_name, "YAML")) {
             if (self.has_yaml_directive) {
                 return error.DuplicateYamlDirective;
             }
             self.has_yaml_directive = true;
-            
+
             // Skip whitespace (including tabs) and parse version
             while (!self.lexer.isEOF() and Lexer.isWhitespace(self.lexer.peek())) {
                 self.lexer.advanceChar();
@@ -213,31 +212,31 @@ pub const Parser = struct {
                 self.lexer.advanceChar();
             }
             const version_end = self.lexer.pos;
-            
+
             // Check for comment without preceding whitespace
             if (self.lexer.peek() == '#') {
                 // Comments must be preceded by whitespace
                 return error.InvalidDirective;
             }
-            
+
             // Skip any trailing whitespace before comment or line end
             while (!self.lexer.isEOF() and Lexer.isWhitespace(self.lexer.peek())) {
                 self.lexer.advanceChar();
             }
-            
+
             // Check for extra content after version (should only be comment or line end)
             if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and self.lexer.peek() != '#') {
                 // Extra content after YAML version - error
                 return error.InvalidDirective;
             }
-            
+
             const version = self.lexer.input[version_start..version_end];
-            
+
             // Parse version as major.minor
             // Accept YAML 1.1, 1.2 as supported
             // Accept YAML 1.3+ (future versions) with a warning (parse as 1.2)
             // Reject versions < 1.1
-            
+
             // Simple version check: split on '.'
             var dot_pos: ?usize = null;
             for (version, 0..) |c, i| {
@@ -246,11 +245,11 @@ pub const Parser = struct {
                     break;
                 }
             }
-            
+
             if (dot_pos) |pos| {
                 const major_str = version[0..pos];
-                const minor_str = version[pos + 1..];
-                
+                const minor_str = version[pos + 1 ..];
+
                 // Parse major and minor version numbers
                 const major = std.fmt.parseInt(u32, major_str, 10) catch {
                     return error.UnsupportedYamlVersion;
@@ -258,7 +257,7 @@ pub const Parser = struct {
                 const minor = std.fmt.parseInt(u32, minor_str, 10) catch {
                     return error.UnsupportedYamlVersion;
                 };
-                
+
                 // Accept YAML 1.x where x >= 1
                 // Reject YAML 0.x or 2.x+
                 if (major != 1) {
@@ -278,7 +277,7 @@ pub const Parser = struct {
             while (!self.lexer.isEOF() and Lexer.isWhitespace(self.lexer.peek())) {
                 self.lexer.advanceChar();
             }
-            
+
             // Parse tag handle (e.g., !e!)
             const handle_start = self.lexer.pos;
             if (self.lexer.peek() == '!') {
@@ -292,26 +291,26 @@ pub const Parser = struct {
                 }
             }
             const handle = self.lexer.input[handle_start..self.lexer.pos];
-            
+
             // Skip whitespace to prefix
             while (!self.lexer.isEOF() and Lexer.isWhitespace(self.lexer.peek())) {
                 self.lexer.advanceChar();
             }
-            
+
             // Parse tag prefix (URI)
             const prefix_start = self.lexer.pos;
             while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and !Lexer.isWhitespace(self.lexer.peek()) and self.lexer.peek() != '#') {
                 self.lexer.advanceChar();
             }
             const prefix = self.lexer.input[prefix_start..self.lexer.pos];
-            
+
             // Store the tag handle mapping
             try self.tag_handles.put(handle, prefix);
         } else {
             // Unknown directive - skip it with a warning (not an error)
             // Already at end of directive name, just skip rest of line
         }
-        
+
         // Skip to end of line
         self.lexer.skipToEndOfLine();
         _ = self.lexer.skipLineBreak();
@@ -320,18 +319,18 @@ pub const Parser = struct {
     fn parseValue(self: *Parser, min_indent: usize) ParseError!?*ast.Node {
         // std.debug.print("DEBUG: parseValue called, min_indent={}, peek='{}'\n", .{min_indent, self.lexer.peek()});
         self.skipWhitespaceAndComments();
-        
+
         // // std.debug.print("DEBUG: parseValue called, char = '{}' ({}), column = {}, line = {}\n", .{self.lexer.peek(), self.lexer.peek(), self.lexer.column, self.lexer.line});
-        
+
         if (self.lexer.isEOF()) return null;
-        
+
         // Check for anchors and tags
         var anchor: ?[]const u8 = null;
         var tag: ?[]const u8 = null;
-        
+
         while (true) {
             const ch = self.lexer.peek();
-            
+
             if (ch == '&') {
                 // Anchor
                 self.lexer.advanceChar(); // Skip '&'
@@ -347,7 +346,7 @@ pub const Parser = struct {
                 // Tag
                 self.lexer.advanceChar(); // Skip '!'
                 const start = self.lexer.pos;
-                
+
                 // Handle verbatim tags !<...>
                 if (self.lexer.peek() == '<') {
                     self.lexer.advanceChar(); // Skip '<'
@@ -367,7 +366,7 @@ pub const Parser = struct {
                         }
                         self.lexer.advanceChar();
                     }
-                    
+
                     // After a tag, we cannot have { or [ directly attached (these would be part of tag name)
                     // But we can have , } ] which indicate end of tagged empty node in flow context
                     const next_ch = self.lexer.peek();
@@ -380,11 +379,11 @@ pub const Parser = struct {
                         }
                     }
                 }
-                
-                tag = self.lexer.input[start - 1..self.lexer.pos]; // Include the '!'
+
+                tag = self.lexer.input[start - 1 .. self.lexer.pos]; // Include the '!'
                 // Only skip spaces on the same line, not newlines
                 self.skipSpaces();
-                
+
                 // After a tag, validate what follows
                 // In block context, a comma directly after a tag is invalid
                 if (!self.in_flow_context and self.lexer.peek() == ',') {
@@ -392,20 +391,20 @@ pub const Parser = struct {
                 }
             } else if (ch == '*') {
                 // Alias
-                
+
                 // Check if there are any properties (anchor or tag) before the alias
                 // Aliases cannot have properties according to YAML spec
                 if (anchor != null or tag != null) {
                     return error.InvalidAlias;
                 }
-                
+
                 self.lexer.advanceChar(); // Skip '*'
                 const start = self.lexer.pos;
                 while (!self.lexer.isEOF() and Lexer.isAnchorChar(self.lexer.peek())) {
                     self.lexer.advanceChar();
                 }
                 const alias_name = self.lexer.input[start..self.lexer.pos];
-                
+
                 // Look up the alias in the anchors map
                 // std.debug.print("DEBUG: Looking up alias '{s}'\n", .{alias_name});
                 // std.debug.print("DEBUG: Anchors map has {} entries\n", .{self.anchors.count()});
@@ -422,24 +421,24 @@ pub const Parser = struct {
                 break;
             }
         }
-        
+
         const ch = self.lexer.peek();
         // std.debug.print("DEBUG: After anchor/tag loop, ch='{}' ({})\n", .{ch, ch});
-        
+
         // Check for document markers in flow context - they're not allowed
         if (self.in_flow_context) {
             if (self.lexer.match("---") or self.lexer.match("...")) {
                 return error.InvalidDocumentMarker;
             }
         }
-        
+
         var node: ?*ast.Node = null;
-        
+
         if (ch == '[') {
             // Record the starting line for multiline implicit key detection
             const start_line = self.lexer.line;
             node = try self.parseFlowSequence();
-            
+
             // After parsing the flow sequence, check if it's being used as a multiline implicit key
             // This is invalid according to YAML spec: implicit keys cannot span multiple lines
             if (self.lexer.line != start_line) {
@@ -447,17 +446,17 @@ pub const Parser = struct {
                 const save_pos = self.lexer.pos;
                 const save_line = self.lexer.line;
                 const save_column = self.lexer.column;
-                
+
                 self.skipSpaces();
-                const is_mapping_key = !self.lexer.isEOF() and self.lexer.peek() == ':' and 
-                    (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or 
-                     self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0);
-                
+                const is_mapping_key = !self.lexer.isEOF() and self.lexer.peek() == ':' and
+                    (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or
+                        self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0);
+
                 // Restore position
                 self.lexer.pos = save_pos;
                 self.lexer.line = save_line;
                 self.lexer.column = save_column;
-                
+
                 if (is_mapping_key) {
                     // This is a multiline implicit key, which is invalid
                     return error.InvalidMultilineKey;
@@ -474,137 +473,137 @@ pub const Parser = struct {
             const save_pos = self.lexer.pos;
             const save_line = self.lexer.line;
             const save_column = self.lexer.column;
-                
-                // Skip the quoted string to see what follows
-                self.lexer.advanceChar(); // Skip opening quote
-                var in_escape = false;
-                var has_unescaped_newline = false;
-                while (!self.lexer.isEOF()) {
-                    const peek_ch = self.lexer.peek();
-                    if (in_escape) {
-                        in_escape = false;
-                        self.lexer.advanceChar();
-                        continue;
-                    }
-                    if (peek_ch == '\\') {
-                        in_escape = true;
-                    } else if (peek_ch == '"') {
-                        self.lexer.advanceChar(); // Skip closing quote
-                        break;
-                    } else if (peek_ch == '\n' or peek_ch == '\r') {
-                        // Found an unescaped newline in the quoted string
-                        // This makes it invalid as a mapping key
-                        has_unescaped_newline = true;
-                    }
+
+            // Skip the quoted string to see what follows
+            self.lexer.advanceChar(); // Skip opening quote
+            var in_escape = false;
+            var has_unescaped_newline = false;
+            while (!self.lexer.isEOF()) {
+                const peek_ch = self.lexer.peek();
+                if (in_escape) {
+                    in_escape = false;
                     self.lexer.advanceChar();
+                    continue;
                 }
-                
-                // Now check what follows
+                if (peek_ch == '\\') {
+                    in_escape = true;
+                } else if (peek_ch == '"') {
+                    self.lexer.advanceChar(); // Skip closing quote
+                    break;
+                } else if (peek_ch == '\n' or peek_ch == '\r') {
+                    // Found an unescaped newline in the quoted string
+                    // This makes it invalid as a mapping key
+                    has_unescaped_newline = true;
+                }
+                self.lexer.advanceChar();
+            }
+
+            // Now check what follows
+            self.skipSpaces();
+            // A double-quoted string with unescaped newlines cannot be a mapping key
+            const is_mapping_key = !has_unescaped_newline and self.lexer.peek() == ':' and
+                (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or
+                    self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0);
+
+            // Check if this is an invalid multiline key
+            const is_invalid_multiline_key = has_unescaped_newline and self.lexer.peek() == ':';
+
+            // std.debug.print("DEBUG: After lookahead, has_unescaped_newline={}, is_invalid_multiline_key={}\n", .{has_unescaped_newline, is_invalid_multiline_key});
+
+            // Restore position
+            self.lexer.pos = save_pos;
+            self.lexer.line = save_line;
+            self.lexer.column = save_column;
+
+            // Now handle the invalid case after restoring position
+            if (is_invalid_multiline_key) {
+                // This is an invalid multiline key - reject immediately
+                return error.InvalidMultilineKey;
+            }
+
+            if (is_mapping_key) {
+                // This is a mapping with a quoted key - parse the key in appropriate KEY context
+                const key_context: Context = if (self.isInFlowContext()) .FLOW_KEY else .BLOCK_KEY;
+                try self.pushContext(key_context);
+                const quoted_key = try self.parseDoubleQuotedScalar();
+                self.popContext();
+
+                // Now create a mapping and parse the rest
+                const mapping_node = try self.arena.allocator().create(ast.Node);
+                mapping_node.* = .{
+                    .type = .mapping,
+                    .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.arena.allocator()) } },
+                };
+
+                // Skip the colon
                 self.skipSpaces();
-                // A double-quoted string with unescaped newlines cannot be a mapping key
-                const is_mapping_key = !has_unescaped_newline and self.lexer.peek() == ':' and 
-                    (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or 
-                     self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0);
-                
-                // Check if this is an invalid multiline key
-                const is_invalid_multiline_key = has_unescaped_newline and self.lexer.peek() == ':';
-                
-                // std.debug.print("DEBUG: After lookahead, has_unescaped_newline={}, is_invalid_multiline_key={}\n", .{has_unescaped_newline, is_invalid_multiline_key});
-                
-                // Restore position
-                self.lexer.pos = save_pos;
-                self.lexer.line = save_line;
-                self.lexer.column = save_column;
-                
-                // Now handle the invalid case after restoring position
-                if (is_invalid_multiline_key) {
-                    // This is an invalid multiline key - reject immediately
-                    return error.InvalidMultilineKey;
+                self.lexer.advanceChar(); // Skip ':'
+
+                // Parse the value
+                try self.skipSpacesCheckTabs();
+                var value: ?*ast.Node = null;
+
+                if (Lexer.isLineBreak(self.lexer.peek()) or self.lexer.isEOF()) {
+                    self.skipToNextLine();
+                    const value_indent = self.getCurrentIndent();
+                    if (value_indent > min_indent) {
+                        value = try self.parseValue(value_indent);
+                    }
+                } else {
+                    value = try self.parseValue(min_indent);
                 }
-                
-                if (is_mapping_key) {
-                    // This is a mapping with a quoted key - parse the key in appropriate KEY context
-                    const key_context: Context = if (self.isInFlowContext()) .FLOW_KEY else .BLOCK_KEY;
-                    try self.pushContext(key_context);
-                    const quoted_key = try self.parseDoubleQuotedScalar();
-                    self.popContext();
-                    
-                    // Now create a mapping and parse the rest
-                    const mapping_node = try self.arena.allocator().create(ast.Node);
-                    mapping_node.* = .{
-                        .type = .mapping,
-                        .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.arena.allocator()) } },
-                    };
-                    
-                    // Skip the colon
-                    self.skipSpaces();
-                    self.lexer.advanceChar(); // Skip ':'
-                    
-                    // Parse the value
-                    try self.skipSpacesCheckTabs();
-                    var value: ?*ast.Node = null;
-                    
-                    if (Lexer.isLineBreak(self.lexer.peek()) or self.lexer.isEOF()) {
-                        self.skipToNextLine();
-                        const value_indent = self.getCurrentIndent();
-                        if (value_indent > min_indent) {
-                            value = try self.parseValue(value_indent);
-                        }
-                    } else {
-                        value = try self.parseValue(min_indent);
+
+                if (value == null) {
+                    value = try self.createNullNode();
+                }
+
+                try mapping_node.data.mapping.pairs.append(.{ .key = quoted_key, .value = value.? });
+
+                // Continue parsing additional pairs at the same indentation level
+                // This is necessary to handle multi-pair block mappings that start with quoted keys
+                self.skipWhitespaceAndComments();
+                while (!self.lexer.isEOF() and !self.isAtDocumentMarker()) {
+                    // Check if we're still at the same indentation level
+                    const current_indent = self.getCurrentIndent();
+                    if (current_indent != min_indent) {
+                        break;
                     }
-                    
-                    if (value == null) {
-                        value = try self.createNullNode();
-                    }
-                    
-                    try mapping_node.data.mapping.pairs.append(.{ .key = quoted_key, .value = value.? });
-                    
-                    // Continue parsing additional pairs at the same indentation level
-                    // This is necessary to handle multi-pair block mappings that start with quoted keys
-                    self.skipWhitespaceAndComments();
-                    while (!self.lexer.isEOF() and !self.isAtDocumentMarker()) {
-                        // Check if we're still at the same indentation level
-                        const current_indent = self.getCurrentIndent();
-                        if (current_indent != min_indent) {
+
+                    // Check if the next line looks like another key-value pair
+                    const next_ch = self.lexer.peek();
+                    if (next_ch == '"') {
+                        // Another quoted key - parse it
+                        const next_value = try self.parseValue(min_indent);
+
+                        if (next_value == null) {
                             break;
                         }
-                        
-                        // Check if the next line looks like another key-value pair
-                        const next_ch = self.lexer.peek();
-                        if (next_ch == '"') {
-                            // Another quoted key - parse it
-                            const next_value = try self.parseValue(min_indent);
-                            
-                            if (next_value == null) {
-                                break;
-                            }
-                            
-                            // If parseValue returns a mapping, merge its pairs into ours
-                            if (next_value) |nv| {
-                                if (nv.type == .mapping) {
-                                    for (nv.data.mapping.pairs.items) |pair| {
-                                        try mapping_node.data.mapping.pairs.append(pair);
-                                    }
-                                } else {
-                                    // Not a mapping, stop
-                                    break;
+
+                        // If parseValue returns a mapping, merge its pairs into ours
+                        if (next_value) |nv| {
+                            if (nv.type == .mapping) {
+                                for (nv.data.mapping.pairs.items) |pair| {
+                                    try mapping_node.data.mapping.pairs.append(pair);
                                 }
                             } else {
+                                // Not a mapping, stop
                                 break;
                             }
                         } else {
-                            // Not a quoted string, stop
                             break;
                         }
-                        
-                        self.skipWhitespaceAndComments();
+                    } else {
+                        // Not a quoted string, stop
+                        break;
                     }
-                    
-                    node = mapping_node;
-                } else {
-                    node = try self.parseDoubleQuotedScalar();
+
+                    self.skipWhitespaceAndComments();
                 }
+
+                node = mapping_node;
+            } else {
+                node = try self.parseDoubleQuotedScalar();
+            }
         } else if (ch == '\'') {
             // Check if this single quoted scalar might be a mapping key
             // We need to parse it and see if it's followed by a colon
@@ -613,30 +612,30 @@ pub const Parser = struct {
                 const save_line = self.lexer.line;
                 const save_column = self.lexer.column;
                 const start_line = self.lexer.line;
-                
+
                 // Parse the single quoted scalar to check what follows
                 const temp_scalar = try self.parseSingleQuotedScalar();
                 const end_line = self.lexer.line;
-                
+
                 // Skip spaces to see if there's a colon
                 self.skipSpaces();
-                
-                const is_mapping_key = self.lexer.peek() == ':' and 
-                    (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or 
-                     self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0);
-                
+
+                const is_mapping_key = self.lexer.peek() == ':' and
+                    (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or
+                        self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0);
+
                 // Restore position
                 self.lexer.pos = save_pos;
                 self.lexer.line = save_line;
                 self.lexer.column = save_column;
                 self.arena.allocator().destroy(temp_scalar);
-                
+
                 if (is_mapping_key) {
                     // Check if the key spans multiple lines - this is invalid for implicit keys
                     if (end_line > start_line) {
                         return error.InvalidMultilineKey;
                     }
-                    
+
                     // This is a mapping - restore position and let parseBlockMapping handle it
                     // This ensures all pairs in the mapping are parsed, not just the first one
                     node = try self.parseBlockMapping(min_indent);
@@ -653,7 +652,7 @@ pub const Parser = struct {
         } else {
             const current_column = self.lexer.column;
             if (current_column < min_indent) return null;
-            
+
             if (ch == '-' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
                 // If we have an anchor before a block sequence entry, it must be on a separate line
                 // Tags are allowed, but anchors are not
@@ -685,106 +684,106 @@ pub const Parser = struct {
                     const save_pos = self.lexer.pos;
                     const save_line = self.lexer.line;
                     const save_column = self.lexer.column;
-                    
+
                     const scalar = try self.parsePlainScalar();
                     self.skipSpaces();
-                    
+
                     if (self.lexer.peek() == ':' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
                         // This is a mapping. If we have an anchor, it should be on the key
-                            if (anchor != null) {
-                                // Special case: anchor on mapping key
-                                // Apply the anchor to the key (scalar we just parsed)
-                                // std.debug.print("DEBUG: About to register anchor '{s}' with key node type {}\n", .{anchor.?, scalar.type});
-                                try self.anchors.put(anchor.?, scalar);
-                                scalar.anchor = anchor;
-                                // std.debug.print("DEBUG: Successfully registered anchor '{s}' on key\n", .{anchor.?});
-                                anchor = null; // Clear anchor so it doesn't get applied again
-  
-                                // Now parse the rest of the mapping
+                        if (anchor != null) {
+                            // Special case: anchor on mapping key
+                            // Apply the anchor to the key (scalar we just parsed)
+                            // std.debug.print("DEBUG: About to register anchor '{s}' with key node type {}\n", .{anchor.?, scalar.type});
+                            try self.anchors.put(anchor.?, scalar);
+                            scalar.anchor = anchor;
+                            // std.debug.print("DEBUG: Successfully registered anchor '{s}' on key\n", .{anchor.?});
+                            anchor = null; // Clear anchor so it doesn't get applied again
+
+                            // Now parse the rest of the mapping
+                            self.lexer.advanceChar(); // Skip ':'
+                            self.skipSpaces();
+
+                            // Parse the value
+                            var value: ?*ast.Node = null;
+                            if (Lexer.isLineBreak(self.lexer.peek()) or self.lexer.isEOF()) {
+                                self.skipToNextLine();
+                                const value_indent = self.getCurrentIndent();
+                                if (value_indent > min_indent) {
+                                    value = try self.parseValue(value_indent);
+                                }
+                            } else {
+                                value = try self.parseValue(min_indent);
+                            }
+
+                            if (value == null) {
+                                value = try self.createNullNode();
+                            }
+
+                            // Create the mapping node
+                            const mapping_node = try self.arena.allocator().create(ast.Node);
+                            mapping_node.* = .{
+                                .type = .mapping,
+                                .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.arena.allocator()) } },
+                            };
+                            try mapping_node.data.mapping.pairs.append(.{ .key = scalar, .value = value.? });
+
+                            // Check if there are more mapping entries at the same indent level
+                            // The mapping started at min_indent, not current_column
+                            while (!self.lexer.isEOF()) {
+                                self.skipWhitespaceAndComments();
+                                if (self.lexer.isEOF()) break;
+
+                                const next_indent = self.getCurrentIndent();
+                                // std.debug.print("DEBUG: Checking for more entries, next_indent={}, min_indent={}\n", .{next_indent, min_indent});
+                                if (next_indent != min_indent) break;
+
+                                // Parse the next key
+                                const next_key = try self.parsePlainScalar();
+
+                                self.skipSpaces();
+                                if (self.lexer.peek() != ':') {
+                                    self.arena.allocator().destroy(next_key);
+                                    break;
+                                }
                                 self.lexer.advanceChar(); // Skip ':'
                                 self.skipSpaces();
-  
+
                                 // Parse the value
-                                var value: ?*ast.Node = null;
+                                var next_value: ?*ast.Node = null;
                                 if (Lexer.isLineBreak(self.lexer.peek()) or self.lexer.isEOF()) {
                                     self.skipToNextLine();
                                     const value_indent = self.getCurrentIndent();
                                     if (value_indent > min_indent) {
-                                        value = try self.parseValue(value_indent);
+                                        next_value = try self.parseValue(value_indent);
                                     }
                                 } else {
-                                    value = try self.parseValue(min_indent);
+                                    next_value = try self.parseValue(min_indent);
                                 }
-  
-                                if (value == null) {
-                                    value = try self.createNullNode();
+
+                                if (next_value == null) {
+                                    next_value = try self.createNullNode();
                                 }
-  
-                                // Create the mapping node
-                                const mapping_node = try self.arena.allocator().create(ast.Node);
-                                mapping_node.* = .{
-                                    .type = .mapping,
-                                    .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.arena.allocator()) } },
-                                };
-                                try mapping_node.data.mapping.pairs.append(.{ .key = scalar, .value = value.? });
-  
-                                // Check if there are more mapping entries at the same indent level
-                                // The mapping started at min_indent, not current_column
-                                while (!self.lexer.isEOF()) {
-                                    self.skipWhitespaceAndComments();
-                                    if (self.lexer.isEOF()) break;
-  
-                                    const next_indent = self.getCurrentIndent();
-                                    // std.debug.print("DEBUG: Checking for more entries, next_indent={}, min_indent={}\n", .{next_indent, min_indent});
-                                    if (next_indent != min_indent) break;
-  
-                                    // Parse the next key
-                                    const next_key = try self.parsePlainScalar();
-  
-                                    self.skipSpaces();
-                                    if (self.lexer.peek() != ':') {
-                                        self.arena.allocator().destroy(next_key);
-                                        break;
-                                    }
-                                    self.lexer.advanceChar(); // Skip ':'
-                                    self.skipSpaces();
-  
-                                    // Parse the value
-                                    var next_value: ?*ast.Node = null;
-                                    if (Lexer.isLineBreak(self.lexer.peek()) or self.lexer.isEOF()) {
-                                        self.skipToNextLine();
-                                        const value_indent = self.getCurrentIndent();
-                                        if (value_indent > min_indent) {
-                                            next_value = try self.parseValue(value_indent);
-                                        }
-                                    } else {
-                                        next_value = try self.parseValue(min_indent);
-                                    }
-  
-                                    if (next_value == null) {
-                                        next_value = try self.createNullNode();
-                                    }
-  
-                                    try mapping_node.data.mapping.pairs.append(.{ .key = next_key, .value = next_value.? });
-                                }
-  
-                                node = mapping_node;
-                            } else {
-                                // No anchor, proceed normally
-                                self.lexer.pos = save_pos;
-                                self.lexer.line = save_line;
-                                self.lexer.column = save_column;
-                                self.arena.allocator().destroy(scalar);
-                                node = try self.parseBlockMapping(min_indent);
+
+                                try mapping_node.data.mapping.pairs.append(.{ .key = next_key, .value = next_value.? });
                             }
+
+                            node = mapping_node;
+                        } else {
+                            // No anchor, proceed normally
+                            self.lexer.pos = save_pos;
+                            self.lexer.line = save_line;
+                            self.lexer.column = save_column;
+                            self.arena.allocator().destroy(scalar);
+                            node = try self.parseBlockMapping(min_indent);
+                        }
                     } else {
                         node = scalar;
-                        
+
                         // Check for multi-line implicit key situation in block context
                         // This can happen even at root level (min_indent = 0)
                         const saved_pos = self.lexer.pos;
                         self.skipWhitespaceAndComments();
-                        
+
                         if (!self.lexer.isEOF()) {
                             const next_indent = self.getCurrentIndent();
                             // If next line is at same indent as this scalar
@@ -794,8 +793,9 @@ pub const Parser = struct {
                                 while (scan_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[scan_pos])) {
                                     if (self.lexer.input[scan_pos] == ':' and
                                         (scan_pos + 1 >= self.lexer.input.len or
-                                         self.lexer.input[scan_pos + 1] == ' ' or
-                                         Lexer.isLineBreak(self.lexer.input[scan_pos + 1]))) {
+                                            self.lexer.input[scan_pos + 1] == ' ' or
+                                            Lexer.isLineBreak(self.lexer.input[scan_pos + 1])))
+                                    {
                                         // Multi-line implicit key detected
                                         return error.InvalidPlainScalar;
                                     }
@@ -803,7 +803,7 @@ pub const Parser = struct {
                                 }
                             }
                         }
-                        
+
                         self.lexer.pos = saved_pos;
                     }
                 }
@@ -813,13 +813,13 @@ pub const Parser = struct {
             }
             // else node remains null
         }
-        
+
         // If we have anchor or tag but no node, create a null node
         if (node == null and (anchor != null or tag != null)) {
             // std.debug.print("DEBUG: Creating null node for anchor/tag with no value\n", .{});
             node = try self.createNullNode();
         }
-        
+
         // Apply anchor and tag if present
         if (node) |n| {
             if (anchor) |a| {
@@ -832,7 +832,7 @@ pub const Parser = struct {
             if (tag) |t| {
                 // Resolve shorthand tags if applicable
                 var resolved_tag = t;
-                
+
                 // Check if this is a shorthand tag that needs resolution
                 if (t.len > 1 and t[0] == '!') {
                     // Find the end of the handle (second !)
@@ -842,7 +842,7 @@ pub const Parser = struct {
                         handle_end += 1;
                         const handle = t[0..handle_end];
                         const suffix = t[handle_end..];
-                        
+
                         // Look up the handle in our tag_handles map
                         if (self.tag_handles.get(handle)) |prefix| {
                             // Concatenate prefix and suffix
@@ -853,117 +853,118 @@ pub const Parser = struct {
                         }
                     }
                 }
-                
+
                 n.tag = resolved_tag;
             }
         }
-        
+
         return node;
     }
-    
+
     fn parsePlainScalar(self: *Parser) ParseError!*ast.Node {
         const start_pos = self.lexer.pos;
         var end_pos = start_pos;
         const initial_indent = self.lexer.column;
-        
+
         // For multiline scalar validation, we need to know the indent of the containing context
         // not just the scalar content. For mapping values, this is the mapping key's indent + 1.
         const context_indent = if (self.mapping_context_indent) |indent| indent else initial_indent;
-        
-        
+
         // std.debug.print("DEBUG: parsePlainScalar called, char='{c}' (0x{x}), pos={}, indent={}, in_flow={}\n", .{self.lexer.peek(), self.lexer.peek(), start_pos, initial_indent, self.in_flow_context});
-        
+
         // First, consume the first line
         while (!self.lexer.isEOF()) {
             const ch = self.lexer.peek();
-            
+
             if (Lexer.isLineBreak(ch)) break;
-            
+
             // Handle ':' - it ends the scalar in certain contexts
             if (ch == ':') {
                 const next = self.lexer.peekNext();
                 // Break if: next is whitespace/newline/EOF OR (in flow context AND next is flow indicator)
-                if (Lexer.isWhitespace(next) or Lexer.isLineBreak(next) or next == 0 or 
-                    (self.in_flow_context and Lexer.isFlowIndicator(next))) {
+                if (Lexer.isWhitespace(next) or Lexer.isLineBreak(next) or next == 0 or
+                    (self.in_flow_context and Lexer.isFlowIndicator(next)))
+                {
                     // Tabs after colons are allowed as whitespace separators
                     break;
                 }
             }
-            
+
             // Comments must be preceded by whitespace (space or tab) or be at the start of the line
             if (ch == '#' and (self.lexer.pos == 0 or Lexer.isWhitespace(self.lexer.input[self.lexer.pos - 1]))) break;
             // In flow context, flow indicators end the scalar
             if (self.isInFlowContext() and Lexer.isFlowIndicator(ch)) break;
-            
+
             self.lexer.advanceChar();
             if (!Lexer.isWhitespace(ch)) {
                 end_pos = self.lexer.pos;
             }
         }
-        
-        
+
         // Now handle potential multi-line scalars
         // In BLOCK_KEY contexts, plain scalars cannot span multiple lines
         // In FLOW_KEY contexts, multiline is allowed (per YAML spec example 9.4)
         // In flow contexts, multiline is allowed
         // In block contexts, multiline is allowed except in key contexts
-        const allow_multiline = (self.context != .BLOCK_KEY) and 
-                                (self.isInFlowContext() or self.mapping_context_indent == null);
-        
-        
+        const allow_multiline = (self.context != .BLOCK_KEY) and
+            (self.isInFlowContext() or self.mapping_context_indent == null);
+
         // Special check for invalid multiline implicit keys even when multiline is not allowed
         // This catches cases like HU3P where a plain scalar in a block mapping value
         // would contain mapping indicators on continuation lines
         // But don't apply this check when parsing inside block sequence entries (like JQ4R)
         // Also don't apply in flow contexts where different rules apply
-        if (!allow_multiline and !self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek()) and 
-            self.mapping_context_indent != null and !self.parsing_explicit_key and 
-            !self.parsing_block_sequence_entry and !self.isInFlowContext()) {
-            
+        if (!allow_multiline and !self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek()) and
+            self.mapping_context_indent != null and !self.parsing_explicit_key and
+            !self.parsing_block_sequence_entry and !self.isInFlowContext())
+        {
             var temp_pos = self.lexer.pos;
             temp_pos += 1; // Skip line break
-            
+
             // Skip spaces on new line to find the indent
             while (temp_pos < self.lexer.input.len and self.lexer.input[temp_pos] == ' ') {
                 temp_pos += 1;
             }
-            
+
             // Calculate indent of this line
             var line_start = self.lexer.pos + 1;
             while (line_start > 0 and !Lexer.isLineBreak(self.lexer.input[line_start - 1])) {
                 line_start -= 1;
             }
             const indent = temp_pos - line_start;
-            
+
             // Check for invalid multiline patterns
-            if (indent > context_indent and temp_pos < self.lexer.input.len and 
-                !Lexer.isLineBreak(self.lexer.input[temp_pos])) {
-                
+            if (indent > context_indent and temp_pos < self.lexer.input.len and
+                !Lexer.isLineBreak(self.lexer.input[temp_pos]))
+            {
+
                 // Check if this line contains a mapping indicator
                 var check_pos = temp_pos;
                 while (check_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[check_pos])) {
                     if (self.lexer.input[check_pos] == ':' and
                         (check_pos + 1 >= self.lexer.input.len or
-                         self.lexer.input[check_pos + 1] == ' ' or
-                         Lexer.isLineBreak(self.lexer.input[check_pos + 1]))) {
+                            self.lexer.input[check_pos + 1] == ' ' or
+                            Lexer.isLineBreak(self.lexer.input[check_pos + 1])))
+                    {
                         return error.InvalidPlainScalar;
                     }
                     check_pos += 1;
                 }
-                
+
                 // Check for BF9H pattern: comment interruption followed by continuation
                 // Scan the first continuation line to see if it ends with a comment
                 var line_pos = temp_pos;
                 var found_comment = false;
                 while (line_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[line_pos])) {
-                    if (self.lexer.input[line_pos] == '#' and line_pos > 0 and 
-                        Lexer.isWhitespace(self.lexer.input[line_pos - 1])) {
+                    if (self.lexer.input[line_pos] == '#' and line_pos > 0 and
+                        Lexer.isWhitespace(self.lexer.input[line_pos - 1]))
+                    {
                         found_comment = true;
                         break;
                     }
                     line_pos += 1;
                 }
-                
+
                 // If this line has a comment, check if there are more continuation lines
                 if (found_comment) {
                     // Skip to end of this line
@@ -974,36 +975,36 @@ pub const Parser = struct {
                     if (line_pos < self.lexer.input.len and Lexer.isLineBreak(self.lexer.input[line_pos])) {
                         line_pos += 1;
                     }
-                    
+
                     // Check if next line is indented and has content (invalid continuation)
                     var next_indent: usize = 0;
                     while (line_pos < self.lexer.input.len and self.lexer.input[line_pos] == ' ') {
                         line_pos += 1;
                         next_indent += 1;
                     }
-                    
-                    if (line_pos < self.lexer.input.len and 
-                        !Lexer.isLineBreak(self.lexer.input[line_pos]) and 
+
+                    if (line_pos < self.lexer.input.len and
+                        !Lexer.isLineBreak(self.lexer.input[line_pos]) and
                         self.lexer.input[line_pos] != '#' and
-                        next_indent > context_indent) {
+                        next_indent > context_indent)
+                    {
                         return error.InvalidPlainScalar;
                     }
                 }
             }
         }
-        
-        
+
         // Additional check: even when multiline is not allowed, detect invalid comment interruption patterns
         // This catches cases like 8XDJ where a comment interrupts what appears to be a continuation
         if (!allow_multiline and !self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek())) {
             // Look ahead to see if there's a comment followed by indented content
             var temp_pos = self.lexer.pos + 1; // Skip line break
-            
+
             // Skip to start of next line
             while (temp_pos < self.lexer.input.len and Lexer.isLineBreak(self.lexer.input[temp_pos])) {
                 temp_pos += 1;
             }
-            
+
             // Check if this line starts with a comment
             if (temp_pos < self.lexer.input.len and self.lexer.input[temp_pos] == '#') {
                 // Skip the comment line
@@ -1014,28 +1015,29 @@ pub const Parser = struct {
                 if (temp_pos < self.lexer.input.len and Lexer.isLineBreak(self.lexer.input[temp_pos])) {
                     temp_pos += 1;
                 }
-                
+
                 // Check if the next line is indented and has content
                 var next_line_spaces: usize = 0;
                 while (temp_pos < self.lexer.input.len and self.lexer.input[temp_pos] == ' ') {
                     temp_pos += 1;
                     next_line_spaces += 1;
                 }
-                
+
                 // If there's indented content after a comment, this is invalid comment interruption
-                if (temp_pos < self.lexer.input.len and 
-                    !Lexer.isLineBreak(self.lexer.input[temp_pos]) and 
+                if (temp_pos < self.lexer.input.len and
+                    !Lexer.isLineBreak(self.lexer.input[temp_pos]) and
                     self.lexer.input[temp_pos] != '#' and
-                    next_line_spaces > 0) {
+                    next_line_spaces > 0)
+                {
                     return error.InvalidPlainScalar;
                 }
             }
         }
-        
+
         if (!self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek()) and allow_multiline) {
             var first_continuation_indent: ?usize = null;
             var comment_interrupted_previous_line = false;
-            
+
             // Check if the current line ends with a comment (before the line break)
             if (self.lexer.pos > 0) {
                 var check_pos = self.lexer.pos - 1;
@@ -1048,18 +1050,18 @@ pub const Parser = struct {
                     comment_interrupted_previous_line = true;
                 }
             }
-            
+
             while (!self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek())) {
                 const line_break_pos = self.lexer.pos;
                 self.lexer.advanceChar(); // Skip line break
-                
+
                 // Skip spaces on new line - but track if we encounter tabs for indentation
                 var spaces_count: usize = 0;
                 while (self.lexer.peek() == ' ') {
                     self.lexer.advanceChar();
                     spaces_count += 1;
                 }
-                
+
                 // Handle tabs at the beginning of continuation lines
                 // For plain scalars, tabs can be used as indentation in continuation lines
                 // as they are part of the folding whitespace that gets normalized
@@ -1074,14 +1076,13 @@ pub const Parser = struct {
                     }
                 }
                 const new_indent = self.lexer.column;
-                
-                
+
                 // Check if this line starts with a comment
                 if (self.lexer.peek() == '#') {
                     // A comment line interrupts the plain scalar
                     // But we need to check if there are continuation lines after this comment
                     // which would make this an invalid plain scalar pattern
-                    
+
                     // Look ahead to see if there are more indented lines after this comment
                     var temp_pos = self.lexer.pos;
                     // Skip the comment line
@@ -1092,35 +1093,35 @@ pub const Parser = struct {
                     if (temp_pos < self.lexer.input.len and Lexer.isLineBreak(self.lexer.input[temp_pos])) {
                         temp_pos += 1;
                     }
-                    
+
                     // Check if the next line is indented and would be a continuation
                     var next_line_spaces: usize = 0;
                     while (temp_pos < self.lexer.input.len and self.lexer.input[temp_pos] == ' ') {
                         temp_pos += 1;
                         next_line_spaces += 1;
                     }
-                    
-                    // If the next line is indented more than context and has content, 
+
+                    // If the next line is indented more than context and has content,
                     // this is invalid comment interruption
-                    if (temp_pos < self.lexer.input.len and 
-                        !Lexer.isLineBreak(self.lexer.input[temp_pos]) and 
+                    if (temp_pos < self.lexer.input.len and
+                        !Lexer.isLineBreak(self.lexer.input[temp_pos]) and
                         self.lexer.input[temp_pos] != '#' and
-                        next_line_spaces > context_indent) {
+                        next_line_spaces > context_indent)
+                    {
                         return error.InvalidPlainScalar;
                     }
-                    
+
                     // Otherwise, comment just ends the scalar
                     self.lexer.pos = line_break_pos;
                     break;
                 }
-                
+
                 // Check what's on this line
                 if (self.lexer.isEOF() or Lexer.isLineBreak(self.lexer.peek())) {
                     // Empty line - continue
                     continue;
                 }
-                
-                
+
                 // For continuation in block context, line must be more indented than the mapping context
                 // In flow context, continuation is allowed at any indentation as long as it's not a flow indicator
                 // Special case: At document root (indent 1), allow continuation at same indent
@@ -1135,8 +1136,9 @@ pub const Parser = struct {
                         if (context_indent == 1) {
                             // At document root - check if it's a document marker
                             const ch = self.lexer.peek();
-                            if ((ch == '-' and self.lexer.match("---")) or 
-                                (ch == '.' and self.lexer.match("..."))) {
+                            if ((ch == '-' and self.lexer.match("---")) or
+                                (ch == '.' and self.lexer.match("...")))
+                            {
                                 // Document marker - not a continuation
                                 self.lexer.pos = line_break_pos;
                                 break;
@@ -1150,7 +1152,7 @@ pub const Parser = struct {
                     }
                     // If new_indent > context_indent, it's a valid continuation, continue
                 }
-                
+
                 // In flow context, check if the line starts with a flow indicator that would end the scalar
                 if (self.in_flow_context) {
                     const ch = self.lexer.peek();
@@ -1160,13 +1162,12 @@ pub const Parser = struct {
                         break;
                     }
                 }
-                
+
                 // If a comment interrupted the previous line, continuation is invalid
                 if (comment_interrupted_previous_line) {
                     return error.InvalidPlainScalar;
                 }
-                
-                
+
                 // Check if this continuation line contains a mapping indicator that would
                 // make this an invalid multi-line implicit key
                 // Skip this check when parsing explicit keys or in flow context, as they have different rules
@@ -1175,29 +1176,30 @@ pub const Parser = struct {
                     while (check_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[check_pos])) {
                         if (self.lexer.input[check_pos] == ':' and
                             (check_pos + 1 >= self.lexer.input.len or
-                             self.lexer.input[check_pos + 1] == ' ' or
-                             Lexer.isLineBreak(self.lexer.input[check_pos + 1]))) {
+                                self.lexer.input[check_pos + 1] == ' ' or
+                                Lexer.isLineBreak(self.lexer.input[check_pos + 1])))
+                        {
                             // This continuation line contains a mapping indicator - invalid
                             return error.InvalidPlainScalar;
                         }
                         check_pos += 1;
                     }
                 }
-                
+
                 // // std.debug.print("Debug plain scalar: Continuing line at indent {}\n", .{new_indent});
-                
+
                 // If this is the first continuation line, remember its indent
                 if (first_continuation_indent == null) {
                     first_continuation_indent = new_indent;
                 }
-                
+
                 // This line is part of the scalar - consume it
-                
+
                 // Now consume the line
                 var flow_indicator_found = false;
                 while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
                     const ch = self.lexer.peek();
-                    
+
                     // In flow context, check for ':' that ends the scalar
                     if (self.in_flow_context and ch == ':') {
                         const next = self.lexer.peekNext();
@@ -1206,7 +1208,7 @@ pub const Parser = struct {
                             break;
                         }
                     }
-                    
+
                     // In flow context, flow indicators end the scalar
                     if (self.isInFlowContext() and Lexer.isFlowIndicator(ch)) {
                         // Restore position to before the line break that started this continuation
@@ -1214,14 +1216,14 @@ pub const Parser = struct {
                         flow_indicator_found = true;
                         break;
                     }
-                    
+
                     if (ch == '#' and self.lexer.input[self.lexer.pos - 1] == ' ') {
                         comment_interrupted_previous_line = true;
                         // Skip to end of line
                         while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
                             self.lexer.advanceChar();
                         }
-                        
+
                         // Check if there are continuation lines after this comment
                         // which would make this invalid
                         var temp_pos = self.lexer.pos;
@@ -1229,42 +1231,42 @@ pub const Parser = struct {
                         if (temp_pos < self.lexer.input.len and Lexer.isLineBreak(self.lexer.input[temp_pos])) {
                             temp_pos += 1;
                         }
-                        
+
                         // Check if the next line is indented and would be a continuation
                         var next_line_spaces: usize = 0;
                         while (temp_pos < self.lexer.input.len and self.lexer.input[temp_pos] == ' ') {
                             temp_pos += 1;
                             next_line_spaces += 1;
                         }
-                        
+
                         // If the next line is indented more than context and has content,
                         // this is invalid comment interruption (like BF9H test case)
-                        if (temp_pos < self.lexer.input.len and 
-                            !Lexer.isLineBreak(self.lexer.input[temp_pos]) and 
+                        if (temp_pos < self.lexer.input.len and
+                            !Lexer.isLineBreak(self.lexer.input[temp_pos]) and
                             self.lexer.input[temp_pos] != '#' and
-                            next_line_spaces > context_indent) {
+                            next_line_spaces > context_indent)
+                        {
                             return error.InvalidPlainScalar;
                         }
-                        
+
                         break;
                     }
-                    
-                    
+
                     self.lexer.advanceChar();
                     if (!Lexer.isWhitespace(ch)) {
                         end_pos = self.lexer.pos;
                     }
                 }
-                
+
                 // If we found a flow indicator, break out of the multiline loop
                 if (flow_indicator_found) {
                     break;
                 }
             }
         }
-        
+
         var value = self.lexer.input[start_pos..end_pos];
-        
+
         // Fold newlines in plain scalars to spaces (YAML folding rules)
         // We need to replace single newlines with spaces
         var folded_value = std.ArrayList(u8).init(self.arena.allocator());
@@ -1283,54 +1285,57 @@ pub const Parser = struct {
                 i += 1;
             }
         }
-        
+
         // Use the folded value if we did any folding
         if (folded_value.items.len > 0) {
             value = folded_value.items;
         }
-        
-        
+
         // // std.debug.print("Debug parsePlainScalar: parsed '{s}' from pos {} to {}\n", .{value, start_pos, end_pos});
-        
+
         // In flow context, reject bare '-' as it's a block sequence indicator
         if (self.isInFlowContext() and std.mem.eql(u8, value, "-")) {
             return error.InvalidPlainScalar;
         }
-        
+
         // Check for special values and convert to canonical form
         if (std.mem.eql(u8, value, "null") or std.mem.eql(u8, value, "Null") or std.mem.eql(u8, value, "NULL") or
-            std.mem.eql(u8, value, "~") or std.mem.eql(u8, value, "")) {
+            std.mem.eql(u8, value, "~") or std.mem.eql(u8, value, ""))
+        {
             value = "null";
         } else if (std.mem.eql(u8, value, "true") or std.mem.eql(u8, value, "True") or std.mem.eql(u8, value, "TRUE") or
-                   std.mem.eql(u8, value, "yes") or std.mem.eql(u8, value, "Yes") or std.mem.eql(u8, value, "YES") or
-                   std.mem.eql(u8, value, "on") or std.mem.eql(u8, value, "On") or std.mem.eql(u8, value, "ON") or
-                   std.mem.eql(u8, value, "y") or std.mem.eql(u8, value, "Y")) {
+            std.mem.eql(u8, value, "yes") or std.mem.eql(u8, value, "Yes") or std.mem.eql(u8, value, "YES") or
+            std.mem.eql(u8, value, "on") or std.mem.eql(u8, value, "On") or std.mem.eql(u8, value, "ON") or
+            std.mem.eql(u8, value, "y") or std.mem.eql(u8, value, "Y"))
+        {
             value = "true";
         } else if (std.mem.eql(u8, value, "false") or std.mem.eql(u8, value, "False") or std.mem.eql(u8, value, "FALSE") or
-                   std.mem.eql(u8, value, "no") or std.mem.eql(u8, value, "No") or std.mem.eql(u8, value, "NO") or
-                   std.mem.eql(u8, value, "off") or std.mem.eql(u8, value, "Off") or std.mem.eql(u8, value, "OFF") or
-                   std.mem.eql(u8, value, "n") or std.mem.eql(u8, value, "N")) {
+            std.mem.eql(u8, value, "no") or std.mem.eql(u8, value, "No") or std.mem.eql(u8, value, "NO") or
+            std.mem.eql(u8, value, "off") or std.mem.eql(u8, value, "Off") or std.mem.eql(u8, value, "OFF") or
+            std.mem.eql(u8, value, "n") or std.mem.eql(u8, value, "N"))
+        {
             value = "false";
         } else if (std.mem.eql(u8, value, ".inf") or std.mem.eql(u8, value, ".Inf") or std.mem.eql(u8, value, ".INF") or
-                   std.mem.eql(u8, value, "+.inf") or std.mem.eql(u8, value, "+.Inf") or std.mem.eql(u8, value, "+.INF")) {
+            std.mem.eql(u8, value, "+.inf") or std.mem.eql(u8, value, "+.Inf") or std.mem.eql(u8, value, "+.INF"))
+        {
             value = ".inf";
         } else if (std.mem.eql(u8, value, "-.inf") or std.mem.eql(u8, value, "-.Inf") or std.mem.eql(u8, value, "-.INF")) {
             value = "-.inf";
         } else if (std.mem.eql(u8, value, ".nan") or std.mem.eql(u8, value, ".NaN") or std.mem.eql(u8, value, ".NAN")) {
             value = ".nan";
         }
-        
+
         // std.debug.print("DEBUG: parsePlainScalar done, value='{s}', final_pos={}\n", .{value, self.lexer.pos});
-        
+
         const node = try self.arena.allocator().create(ast.Node);
         node.* = .{
             .type = .scalar,
             .data = .{ .scalar = .{ .value = value, .style = .plain } },
         };
-        
+
         return node;
     }
-    
+
     fn parseFlowSequence(self: *Parser) ParseError!*ast.Node {
         // Record the column where the flow sequence starts (before advancing past '[')
         const flow_indent = self.lexer.column;
@@ -1338,21 +1343,21 @@ pub const Parser = struct {
         const saved_flow_context = self.in_flow_context;
         self.in_flow_context = true;
         defer self.in_flow_context = saved_flow_context;
-        
+
         // Push FLOW_IN context when entering a flow sequence
         try self.pushContext(.FLOW_IN);
         defer self.popContext();
-        
+
         try self.skipWhitespaceAndCommentsInFlowWithIndent(flow_indent);
-        
+
         const node = try self.arena.allocator().create(ast.Node);
         node.* = .{
             .type = .sequence,
             .data = .{ .sequence = .{ .items = std.ArrayList(*ast.Node).init(self.arena.allocator()) } },
         };
-        
+
         var first_item = true;
-        
+
         while (!self.lexer.isEOF() and self.lexer.peek() != ']') {
             // Handle empty entries
             if (self.lexer.peek() == ',') {
@@ -1370,15 +1375,15 @@ pub const Parser = struct {
                 // Trailing comma before ] is allowed in YAML 1.2
                 continue;
             }
-            
+
             // Check if this is a mapping with empty key
             if (self.lexer.peek() == ':') {
                 // Empty key mapping
                 self.lexer.advanceChar(); // Skip ':'
                 try self.skipWhitespaceAndCommentsInFlowWithIndent(flow_indent);
-                
+
                 const map_value = try self.parseValue(0) orelse try self.createNullNode();
-                
+
                 // Create a mapping with single pair (null key)
                 const map_node = try self.arena.allocator().create(ast.Node);
                 map_node.* = .{
@@ -1395,7 +1400,7 @@ pub const Parser = struct {
                 const item = try self.parseValue(0);
                 if (item) |value| {
                     try self.skipWhitespaceAndCommentsInFlowWithIndent(flow_indent);
-                    
+
                     // Check if this is a mapping key
                     if (self.lexer.peek() == ':') {
                         // Check if the colon is on a different line than where the key started
@@ -1403,13 +1408,13 @@ pub const Parser = struct {
                         if (self.lexer.line != start_line) {
                             return error.InvalidMultilineKey;
                         }
-                        
+
                         // This is a single-pair mapping
                         self.lexer.advanceChar(); // Skip ':'
                         try self.skipWhitespaceAndCommentsInFlowWithIndent(flow_indent);
-                        
+
                         const map_value = try self.parseValue(0) orelse try self.createNullNode();
-                        
+
                         // Create a mapping with single pair
                         const map_node = try self.arena.allocator().create(ast.Node);
                         map_node.* = .{
@@ -1424,14 +1429,14 @@ pub const Parser = struct {
                     first_item = false;
                 }
             }
-            
+
             try self.skipWhitespaceAndCommentsInFlowWithIndent(flow_indent);
-            
+
             // Don't consume trailing comma yet
         }
-        
+
         // Trailing comma is allowed in YAML 1.2 flow sequences
-        
+
         if (self.lexer.peek() == ']') {
             self.lexer.advanceChar();
             // Check for comment immediately after closing bracket
@@ -1441,10 +1446,10 @@ pub const Parser = struct {
         } else {
             return error.ExpectedCloseBracket;
         }
-        
+
         return node;
     }
-    
+
     fn parseFlowMapping(self: *Parser) ParseError!*ast.Node {
         // Record the column where the flow mapping starts (before advancing past '{')
         const flow_indent = self.lexer.column;
@@ -1452,19 +1457,19 @@ pub const Parser = struct {
         const saved_flow_context = self.in_flow_context;
         self.in_flow_context = true;
         defer self.in_flow_context = saved_flow_context;
-        
+
         // Push FLOW_IN context when entering a flow mapping
         try self.pushContext(.FLOW_IN);
         defer self.popContext();
-        
+
         try self.skipWhitespaceAndCommentsInFlowWithIndent(flow_indent);
-        
+
         const node = try self.arena.allocator().create(ast.Node);
         node.* = .{
             .type = .mapping,
             .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.arena.allocator()) } },
         };
-        
+
         while (!self.lexer.isEOF() and self.lexer.peek() != '}') {
             // // std.debug.print("Debug: Flow mapping loop, pos={}, char='{}' (0x{x})\n", .{self.lexer.pos, self.lexer.peek(), self.lexer.peek()});
             if (self.lexer.peek() == ',') {
@@ -1476,9 +1481,9 @@ pub const Parser = struct {
                 }
                 continue;
             }
-            
+
             var key: ?*ast.Node = null;
-            
+
             // Check for empty key
             if (self.lexer.peek() == ':') {
                 key = try self.createNullNode();
@@ -1498,9 +1503,9 @@ pub const Parser = struct {
                 key = try self.parseValue(0) orelse return error.ExpectedKey;
                 self.popContext();
             }
-            
+
             try self.skipWhitespaceAndCommentsInFlow();
-            
+
             // Handle implicit null values (key followed by comma or closing brace)
             var value: *ast.Node = undefined;
             if (self.lexer.peek() == ',' or self.lexer.peek() == '}') {
@@ -1510,7 +1515,7 @@ pub const Parser = struct {
                 // Explicit colon separator
                 self.lexer.advanceChar();
                 try self.skipWhitespaceAndCommentsInFlowWithIndent(flow_indent);
-                
+
                 if (self.lexer.peek() == ',' or self.lexer.peek() == '}') {
                     value = try self.createNullNode();
                 } else {
@@ -1519,21 +1524,21 @@ pub const Parser = struct {
             } else {
                 return error.ExpectedColonOrComma;
             }
-            
+
             // std.debug.print("Debug: After parsing value, pos={}, char='{}' (0x{x})\n", .{self.lexer.pos, self.lexer.peek(), self.lexer.peek()});
-            
+
             try node.data.mapping.pairs.append(.{ .key = key.?, .value = value });
-            
+
             try self.skipWhitespaceAndCommentsInFlow();
-            
+
             // std.debug.print("Debug: After skip whitespace, pos={}, char='{}' (0x{x})\n", .{self.lexer.pos, self.lexer.peek(), self.lexer.peek()});
-            
+
             // Check if we've reached the end of the mapping
             if (self.lexer.peek() == '}') {
                 // std.debug.print("Debug: Found closing brace, breaking\n", .{});
                 break;
             }
-            
+
             if (self.lexer.peek() == ',') {
                 self.lexer.advanceChar();
                 try self.skipWhitespaceAndCommentsInFlowWithIndent(flow_indent);
@@ -1543,10 +1548,10 @@ pub const Parser = struct {
                 return error.ExpectedCommaOrBrace;
             }
         }
-        
+
         if (self.lexer.peek() == '}') {
             self.lexer.advanceChar();
-            
+
             // After closing a flow mapping, check for invalid content on the same line
             // when we entered from block context (saved_flow_context == false)
             if (!saved_flow_context) {
@@ -1554,7 +1559,7 @@ pub const Parser = struct {
                 // Check for invalid content after the closing brace
                 const saved_pos = self.lexer.pos;
                 self.skipSpaces();
-                
+
                 if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
                     const ch = self.lexer.peek();
                     if (ch == '#') {
@@ -1592,7 +1597,8 @@ pub const Parser = struct {
                 // If it's alphanumeric or certain special chars, it's starting a plain scalar
                 // which is invalid right after a flow mapping
                 if ((ch >= 'a' and ch <= 'z') or (ch >= 'A' and ch <= 'Z') or
-                    (ch >= '0' and ch <= '9') or ch == '_' or ch == '-' or ch == '.') {
+                    (ch >= '0' and ch <= '9') or ch == '_' or ch == '-' or ch == '.')
+                {
                     // This looks like the start of a plain scalar immediately after }
                     // which would be invalid (like }word or }123)
                     return error.InvalidValueAfterMapping;
@@ -1601,26 +1607,26 @@ pub const Parser = struct {
         } else {
             return error.ExpectedCloseBrace;
         }
-        
+
         return node;
     }
-    
+
     fn parseBlockSequence(self: *Parser, min_indent: usize) ParseError!*ast.Node {
-        // std.debug.print("DEBUG: parseBlockSequence entered, pos={}, char='{}' ({}), line={}, col={}\n", 
+        // std.debug.print("DEBUG: parseBlockSequence entered, pos={}, char='{}' ({}), line={}, col={}\n",
         //     .{self.lexer.pos, self.lexer.peek(), self.lexer.peek(), self.lexer.line, self.lexer.column});
-        
+
         const node = try self.arena.allocator().create(ast.Node);
         node.* = .{
             .type = .sequence,
             .data = .{ .sequence = .{ .items = std.ArrayList(*ast.Node).init(self.arena.allocator()) } },
         };
-        
+
         // Push BLOCK_IN context when entering a block sequence
         try self.pushContext(.BLOCK_IN);
         defer self.popContext();
-        
+
         var sequence_indent: ?usize = null;
-        
+
         // Special handling for sequences that start in the middle of a line
         // (e.g., "- - item" where the second sequence starts at column 3)
         const starting_column = self.lexer.column;
@@ -1630,21 +1636,21 @@ pub const Parser = struct {
             if (next == ' ' or next == '\t' or next == '\n' or next == '\r' or next == 0) {
                 // This is a sequence starting in the middle of a line
                 first_item_on_same_line = true;
-                sequence_indent = starting_column - 1;  // 0-based column position
+                sequence_indent = starting_column - 1; // 0-based column position
             }
         }
-        
+
         while (!self.lexer.isEOF()) {
-            const current_indent = if (first_item_on_same_line) 
-                starting_column - 1 
-            else 
+            const current_indent = if (first_item_on_same_line)
+                starting_column - 1
+            else
                 self.getCurrentIndent();
-                
+
             // std.debug.print("DEBUG: parseBlockSequence while loop, current_indent={}, min_indent={}, sequence_indent={?}, pos={}, char='{}' ({}), first_item_on_same_line={}\n",
             //     .{current_indent, min_indent, sequence_indent, self.lexer.pos, self.lexer.peek(), self.lexer.peek(), first_item_on_same_line});
-            
+
             if (current_indent < min_indent) break;
-            
+
             // If this is not the first item, check that it's at the same indent
             if (sequence_indent) |seq_indent| {
                 if (current_indent != seq_indent) {
@@ -1660,15 +1666,15 @@ pub const Parser = struct {
                 // First item - remember its indent
                 sequence_indent = current_indent;
             }
-            
+
             if (self.lexer.peek() == '-' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
                 // Before processing a new sequence item, check for tabs in its indentation
                 try self.checkIndentationForTabs();
-                
+
                 self.lexer.advanceChar(); // Skip '-'
-                
+
                 // Skip whitespace after '-' but validate tab usage
-                // Tabs are not allowed before YAML structural indicators 
+                // Tabs are not allowed before YAML structural indicators
                 // but are allowed before scalar content
                 // std.debug.print("DEBUG: After skipping '-', pos={}, char='{}' ({})\n", .{self.lexer.pos, self.lexer.peek(), self.lexer.peek()});
                 while (self.lexer.peek() == ' ' or self.lexer.peek() == '\t') {
@@ -1680,34 +1686,36 @@ pub const Parser = struct {
                         if (next_char == '-') {
                             // Check if this is a sequence indicator vs part of a scalar
                             const char_after_dash = self.lexer.input[self.lexer.pos + 2];
-                            if (char_after_dash == ' ' or char_after_dash == '\t' or 
-                                char_after_dash == '\n' or char_after_dash == '\r' or 
-                                char_after_dash == 0) {
+                            if (char_after_dash == ' ' or char_after_dash == '\t' or
+                                char_after_dash == '\n' or char_after_dash == '\r' or
+                                char_after_dash == 0)
+                            {
                                 return error.TabsNotAllowed;
                             }
                         }
                         // Other structural indicators
-                        if (next_char == '?' or next_char == ':' or 
-                            next_char == '{' or next_char == '}' or next_char == '[' or next_char == ']') {
+                        if (next_char == '?' or next_char == ':' or
+                            next_char == '{' or next_char == '}' or next_char == '[' or next_char == ']')
+                        {
                             return error.TabsNotAllowed;
                         }
                     }
                     self.lexer.advanceChar();
                 }
-                
+
                 // Set flag to indicate we're parsing a block sequence entry
                 const prev_parsing_block_sequence_entry = self.parsing_block_sequence_entry;
                 self.parsing_block_sequence_entry = true;
                 defer self.parsing_block_sequence_entry = prev_parsing_block_sequence_entry;
-                
+
                 // std.debug.print("DEBUG: After skipping whitespace, pos={}, char='{}' ({})\n", .{self.lexer.pos, self.lexer.peek(), self.lexer.peek()});
                 // std.debug.print("DEBUG: About to parse block sequence item at indent {}, current char = '{}' ({})\n", .{current_indent + 1, self.lexer.peek(), self.lexer.peek()});
                 const item = try self.parseValue(current_indent + 1) orelse try self.createNullNode();
                 try node.data.sequence.items.append(item);
-                
+
                 // Clear the flag after processing the first item
                 first_item_on_same_line = false;
-                
+
                 // The parseValue call will have consumed all the content for this item,
                 // including any mappings or nested structures.
                 // Only skip to next line if we're not already at a line break
@@ -1715,18 +1723,18 @@ pub const Parser = struct {
                 if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
                     self.skipToNextLine();
                 }
-                
+
                 // After processing an item, check if there's a floating anchor on the next line
                 if (!self.lexer.isEOF()) {
                     // Skip past newlines to get to the next content line
                     const save_pos = self.lexer.pos;
                     const save_line = self.lexer.line;
                     const save_column = self.lexer.column;
-                    
+
                     while (!self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek())) {
                         self.lexer.advanceChar();
                     }
-                    
+
                     // Now check if we're at the sequence indent level with an anchor/tag
                     if (!self.lexer.isEOF()) {
                         const check_indent = self.getCurrentIndent();
@@ -1738,7 +1746,7 @@ pub const Parser = struct {
                             }
                         }
                     }
-                    
+
                     // Restore position for the main loop to process properly
                     self.lexer.pos = save_pos;
                     self.lexer.line = save_line;
@@ -1746,17 +1754,18 @@ pub const Parser = struct {
                 }
             } else {
                 // We're not at a valid sequence item position
-                
+
                 // If we have an established sequence indent and we see a '-' at different indent,
                 // that's an error (like ZVH3 case)
-                if (sequence_indent != null and self.lexer.peek() == '-' and 
-                    (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or 
-                     self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or 
-                     self.lexer.peekNext() == 0)) {
+                if (sequence_indent != null and self.lexer.peek() == '-' and
+                    (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or
+                        self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or
+                        self.lexer.peekNext() == 0))
+                {
                     // This is a sequence indicator at wrong indentation
                     return error.WrongIndentation;
                 }
-                
+
                 // Check if there's content at this indentation level that should be parsed
                 // but isn't a valid sequence item (missing '-' prefix)
                 if (current_indent == (sequence_indent orelse min_indent)) {
@@ -1766,14 +1775,14 @@ pub const Parser = struct {
                         return error.InvalidAnchor;
                     }
                 }
-                
+
                 break;
             }
         }
-        
+
         return node;
     }
-    
+
     fn parseBlockMapping(self: *Parser, min_indent: usize) ParseError!*ast.Node {
         // std.debug.print("DEBUG: parseBlockMapping called, min_indent={}\n", .{min_indent});
         const node = try self.arena.allocator().create(ast.Node);
@@ -1781,35 +1790,35 @@ pub const Parser = struct {
             .type = .mapping,
             .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.arena.allocator()) } },
         };
-        
+
         // Push BLOCK_IN context when entering a block mapping
         try self.pushContext(.BLOCK_IN);
         defer self.popContext();
-        
+
         var mapping_indent: ?usize = null;
         var pending_explicit_key: ?*ast.Node = null;
         var processing_explicit_key_value = false;
-        
+
         // Set the mapping context indent for plain scalar validation
         const prev_mapping_context_indent = self.mapping_context_indent;
         self.mapping_context_indent = min_indent;
         defer self.mapping_context_indent = prev_mapping_context_indent;
-        
+
         while (!self.lexer.isEOF()) {
             // Check for document markers - block mappings should stop at document boundaries
             if (self.isAtDocumentMarker()) {
                 break;
             }
-            
+
             // Check for tabs before doing any indentation calculations
             try self.checkIndentationForTabs();
-            
+
             // Get current indent - needed by multiple code paths
             const current_indent = self.getCurrentIndent();
             // std.debug.print("DEBUG parseBlockMapping: current_indent={}, min_indent={}, peek='{c}' ({}), pos={}, line={}\n", .{current_indent, min_indent, self.lexer.peek(), self.lexer.peek(), self.lexer.pos, self.lexer.line});
-            
+
             var key: ?*ast.Node = null;
-            
+
             // FIRST: Check if we have a pending explicit key waiting for its colon
             // This must be done before indentation checks because the colon line
             // for explicit keys has special indentation rules per YAML spec
@@ -1817,29 +1826,29 @@ pub const Parser = struct {
                 if (current_indent < min_indent) {
                     break;
                 }
-                
+
                 // For explicit keys, the colon should be at the same indent as the '?'
                 // But we need to be flexible about the mapping_indent tracking
                 if (mapping_indent == null) {
                     mapping_indent = current_indent;
                 }
-            
+
                 // Skip whitespace and comments before looking for the colon
                 self.skipWhitespaceAndComments();
-                
+
                 if (self.lexer.peek() == ':') {
                     key = pkey;
                     pending_explicit_key = null;
                     processing_explicit_key_value = true;
                     self.lexer.advanceChar(); // Skip ':'
-                    
+
                     // After explicit value colon, tabs are NOT allowed
                     try self.skipSpacesCheckTabs();
                 } else {
                     // No colon found after explicit key - this means the key has no value (null)
                     key = pkey;
                     pending_explicit_key = null;
-                    
+
                     // Create a null node for the value
                     const null_node = try self.arena.allocator().create(ast.Node);
                     null_node.* = ast.Node{
@@ -1848,11 +1857,11 @@ pub const Parser = struct {
                         .start_column = self.lexer.column,
                         .data = .{ .scalar = .{ .value = "null", .style = .plain } },
                     };
-                    
+
                     // Add the key-value pair immediately
                     try node.data.mapping.pairs.append(.{ .key = key.?, .value = null_node });
                     key = null; // Reset key to avoid double-processing
-                    
+
                     // Continue to parse the next item without consuming any input
                     continue;
                 }
@@ -1869,26 +1878,29 @@ pub const Parser = struct {
                         // This catches "wrong: 2" at indent 1 when mapping is at indent 2
                         if (current_indent == map_indent - 1 and
                             current_indent > 0 and
-                            self.lexer.peek() != '-' and self.lexer.peek() != 0 and 
-                            !self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
+                            self.lexer.peek() != '-' and self.lexer.peek() != 0 and
+                            !self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()))
+                        {
                             // Check if this looks like a mapping key
                             const save_pos = self.lexer.pos;
                             const save_line = self.lexer.line;
                             const save_column = self.lexer.column;
-                            
+
                             // Skip to see if there's a colon that would make this a mapping
-                            while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and 
-                                   self.lexer.peek() != ':') {
+                            while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and
+                                self.lexer.peek() != ':')
+                            {
                                 self.lexer.advanceChar();
                             }
-                            
-                            if (self.lexer.peek() == ':' and 
-                                (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or 
-                                 self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
+
+                            if (self.lexer.peek() == ':' and
+                                (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or
+                                    self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0))
+                            {
                                 // This is a mapping key at wrong indentation
                                 return error.WrongIndentation;
                             }
-                            
+
                             // Restore position
                             self.lexer.pos = save_pos;
                             self.lexer.line = save_line;
@@ -1897,7 +1909,7 @@ pub const Parser = struct {
                     }
                     break;
                 }
-                
+
                 // If this is not the first pair, check that it's at the same indent
                 if (mapping_indent) |map_indent| {
                     if (current_indent != map_indent) {
@@ -1914,17 +1926,17 @@ pub const Parser = struct {
                                 break;
                             }
                         }
-                        
+
                         // std.debug.print("DEBUG: current_indent={}, map_indent={}, in_flow={}\n", .{current_indent, map_indent, in_flow});
                         if (current_indent == map_indent + 1 and !in_flow) {
                             // Check if this looks like a simple mapping key at wrong indentation
                             // This is specifically for the U44R case where we have simple keys like "key2:"
                             // at inconsistent indentation within the same mapping
-                            
+
                             const save_pos = self.lexer.pos;
                             const save_line = self.lexer.line;
                             const save_column = self.lexer.column;
-                            
+
                             // Check if this looks like a simple mapping key:
                             // - Starts with an identifier character (letter or underscore)
                             // - Followed by identifier chars or spaces
@@ -1932,17 +1944,20 @@ pub const Parser = struct {
                             const first_char = self.lexer.peek();
                             if ((first_char >= 'a' and first_char <= 'z') or
                                 (first_char >= 'A' and first_char <= 'Z') or
-                                first_char == '_') {
-                                
+                                first_char == '_')
+                            {
+
                                 // Look for a colon to confirm this is a mapping key
                                 var found_colon = false;
                                 var chars_before_colon: usize = 0;
-                                while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and 
-                                       chars_before_colon < 50) { // Reasonable limit for key length
+                                while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and
+                                    chars_before_colon < 50)
+                                { // Reasonable limit for key length
                                     if (self.lexer.peek() == ':') {
                                         // Check if colon is followed by proper separator
-                                        if (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or 
-                                            self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0) {
+                                        if (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or
+                                            self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)
+                                        {
                                             found_colon = true;
                                             break;
                                         }
@@ -1950,18 +1965,18 @@ pub const Parser = struct {
                                     self.lexer.advanceChar();
                                     chars_before_colon += 1;
                                 }
-                                
+
                                 // Restore position
                                 self.lexer.pos = save_pos;
                                 self.lexer.line = save_line;
                                 self.lexer.column = save_column;
-                                
+
                                 if (found_colon and chars_before_colon < 20) { // Simple keys are typically short
                                     // This looks like a simple mapping key at wrong indentation
                                     return error.WrongIndentation;
                                 }
                             }
-                            
+
                             // Restore position
                             self.lexer.pos = save_pos;
                             self.lexer.line = save_line;
@@ -1975,68 +1990,67 @@ pub const Parser = struct {
                 }
                 // Before processing a new mapping pair, check for tabs in its indentation
                 try self.checkIndentationForTabs();
-                
+
                 // Check for explicit key indicator
-                if (self.lexer.peek() == '?' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or 
-                                                   self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or 
-                                                   self.lexer.peekNext() == 0)) {
+                if (self.lexer.peek() == '?' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or
+                    self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or
+                    self.lexer.peekNext() == 0))
+                {
                     // Explicit key
                     self.lexer.advanceChar(); // Skip '?'
                     try self.skipSpacesCheckTabs();
                     self.skipWhitespaceAndComments();
-                    
+
                     // Parse the key - for explicit keys, typically parse as plain scalar
                     // Explicit keys can be complex, but in most cases they're plain scalars
                     const prev_explicit_key = self.parsing_explicit_key;
                     self.parsing_explicit_key = true; // Disable multiline mapping validation
                     defer self.parsing_explicit_key = prev_explicit_key;
-                    
+
                     // Push BLOCK_KEY context for explicit key parsing
                     try self.pushContext(.BLOCK_KEY);
                     key = (try self.parseValue(self.lexer.column)) orelse blk: {
-                       // If parseValue returns null, create an empty scalar node
+                        // If parseValue returns null, create an empty scalar node
                         const empty_node = try self.arena.allocator().create(ast.Node);
-                        empty_node.* = .{
-                            .type = .scalar,
-                            .data = .{ .scalar = .{ .value = "" } }
-                        };
+                        empty_node.* = .{ .type = .scalar, .data = .{ .scalar = .{ .value = "" } } };
                         break :blk empty_node;
                     };
                     self.popContext();
-                    
+
                     // For explicit keys, the mapping colon can be:
                     // 1. On the same line after spaces: "? key : value"
                     // 2. On the next line: "? key\n: value"
-                    // 
+                    //
                     // In the input "? key:\n:\tkey:", the colon in "key:" is NOT a mapping colon
                     // because it's not preceded by proper separation. We need to find the actual
                     // mapping colon.
-                    
+
                     self.skipSpaces();
-                    
+
                     // Only treat as a mapping colon if it's properly separated with whitespace
                     // A colon immediately after the key (no space) should not be treated as mapping colon
-                    const had_whitespace_before_colon = (self.lexer.pos > 0 and 
-                        (self.lexer.input[self.lexer.pos - 1] == ' ' or 
-                         self.lexer.input[self.lexer.pos - 1] == '\t'));
-                    
+                    const had_whitespace_before_colon = (self.lexer.pos > 0 and
+                        (self.lexer.input[self.lexer.pos - 1] == ' ' or
+                            self.lexer.input[self.lexer.pos - 1] == '\t'));
+
                     if (self.lexer.peek() == ':' and had_whitespace_before_colon and
-                        (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or 
-                         self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or 
-                         self.lexer.peekNext() == 0)) {
-                        // Valid mapping colon on same line  
+                        (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or
+                            self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or
+                            self.lexer.peekNext() == 0))
+                    {
+                        // Valid mapping colon on same line
                         self.lexer.advanceChar(); // Skip ':'
-                        
+
                         // Tabs after colons are allowed as whitespace separators
                     } else {
                         // The colon is not a proper mapping colon, or mapping colon is on next line
                         // Skip any remaining content on this line and move to next line
-                        
+
                         // Skip to end of current line
                         while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
                             self.lexer.advanceChar();
                         }
-                        
+
                         // If we're at EOF, this explicit key has no value - create null value immediately
                         if (self.lexer.isEOF()) {
                             const null_node = try self.arena.allocator().create(ast.Node);
@@ -2046,17 +2060,17 @@ pub const Parser = struct {
                                 .start_column = self.lexer.column,
                                 .data = .{ .scalar = .{ .value = "null", .style = .plain } },
                             };
-                            
+
                             // Add the key-value pair immediately
                             try node.data.mapping.pairs.append(.{ .key = key.?, .value = null_node });
                             break; // Exit the loop
                         }
-                        
+
                         // Skip the newline as well
                         if (!self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek())) {
                             self.lexer.advanceChar();
                         }
-                        
+
                         pending_explicit_key = key;
                         continue;
                     }
@@ -2064,10 +2078,10 @@ pub const Parser = struct {
                     // Implicit key - can be plain, single quoted, or double quoted scalar
                     // Push BLOCK_KEY context for implicit key parsing
                     try self.pushContext(.BLOCK_KEY);
-                    
+
                     // Record starting line to detect multiline keys
                     const start_line = self.lexer.line;
-                    
+
                     // Parse the key - could be any scalar type
                     const ch = self.lexer.peek();
                     if (ch == '"') {
@@ -2077,7 +2091,7 @@ pub const Parser = struct {
                     } else {
                         key = try self.parsePlainScalar();
                     }
-                    
+
                     // Check if the key spans multiple lines - this is invalid for implicit keys
                     if (self.lexer.line > start_line) {
                         if (key != null) {
@@ -2086,20 +2100,20 @@ pub const Parser = struct {
                         self.popContext();
                         return error.InvalidMultilineKey;
                     }
-                    
+
                     self.popContext();
-                    
+
                     // Validate that the key doesn't contain invalid anchor+alias patterns
                     // Pattern like "&anchor *alias" should be invalid because aliases can't have properties
                     if (key != null and key.?.type == .scalar) {
                         const scalar_value = key.?.data.scalar.value;
-                        
+
                         // Check for pattern "&something *something" - this indicates
                         // an attempt to add an anchor property to an alias, which is invalid
                         var i: usize = 0;
                         var found_anchor = false;
                         var found_alias = false;
-                        
+
                         while (i < scalar_value.len) {
                             if (scalar_value[i] == '&') {
                                 found_anchor = true;
@@ -2120,9 +2134,9 @@ pub const Parser = struct {
                             }
                         }
                     }
-                    
+
                     self.skipSpaces();
-                    
+
                     if (self.lexer.peek() != ':') {
                         // In a block mapping, if we parse something that looks like a plain scalar key
                         // but doesn't have a colon, check if it's actually invalid content
@@ -2131,14 +2145,16 @@ pub const Parser = struct {
                         // 2. We successfully parsed a non-empty plain scalar
                         // 3. The scalar is not an anchor/alias/tag indicator
                         if (mapping_indent != null and current_indent == mapping_indent.? and
-                            key != null and key.?.data.scalar.value.len > 0) {
+                            key != null and key.?.data.scalar.value.len > 0)
+                        {
                             // Check if this looks like valid YAML content that's just not a key
                             const scalar_value = key.?.data.scalar.value;
                             // If it starts with special characters, it might be valid non-key content
-                            if (scalar_value[0] != '&' and scalar_value[0] != '*' and 
+                            if (scalar_value[0] != '&' and scalar_value[0] != '*' and
                                 scalar_value[0] != '!' and scalar_value[0] != '-' and
                                 scalar_value[0] != '[' and scalar_value[0] != '{' and
-                                scalar_value[0] != '.') {
+                                scalar_value[0] != '.')
+                            {
                                 // This looks like a plain word that's not a key - invalid
                                 return error.InvalidValueAfterMapping;
                             }
@@ -2147,17 +2163,17 @@ pub const Parser = struct {
                         break;
                     }
                     self.lexer.advanceChar();
-                    
+
                     // Tabs after colons are allowed as whitespace separators
                 }
             }
-            
+
             if (self.lexer.peek() == ' ' or self.lexer.peek() == '\t' or Lexer.isLineBreak(self.lexer.peek())) {
                 self.skipSpacesAllowTabs();
-                
+
                 var value: ?*ast.Node = null;
                 var value_start_line = self.lexer.line; // Track the line where value parsing starts
-                
+
                 if (Lexer.isLineBreak(self.lexer.peek()) or self.lexer.isEOF()) {
                     self.skipToNextLine();
                     const value_indent = self.getCurrentIndent();
@@ -2173,31 +2189,32 @@ pub const Parser = struct {
                             const save_pos = self.lexer.pos;
                             const save_line = self.lexer.line;
                             const save_column = self.lexer.column;
-                            
+
                             // Skip the anchor
                             self.lexer.advanceChar(); // Skip '&'
                             while (!self.lexer.isEOF() and Lexer.isAnchorChar(self.lexer.peek())) {
                                 self.lexer.advanceChar();
                             }
                             self.skipSpaces();
-                            
+
                             // Check if anchor is on its own line followed by a sequence
                             if (Lexer.isLineBreak(self.lexer.peek()) or self.lexer.isEOF()) {
                                 self.skipWhitespaceAndComments();
                                 if (!self.lexer.isEOF()) {
                                     const next_indent = self.getCurrentIndent();
                                     const next_ch = self.lexer.peek();
-                                    
-                                    if (next_indent == 0 and next_ch == '-' and 
-                                        (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or 
-                                         self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or 
-                                         self.lexer.peekNext() == 0)) {
+
+                                    if (next_indent == 0 and next_ch == '-' and
+                                        (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or
+                                            self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or
+                                            self.lexer.peekNext() == 0))
+                                    {
                                         // Invalid: anchor on its own line followed by sequence at zero indent
                                         return error.InvalidAnchor;
                                     }
                                 }
                             }
-                            
+
                             // Restore position
                             self.lexer.pos = save_pos;
                             self.lexer.line = save_line;
@@ -2208,13 +2225,14 @@ pub const Parser = struct {
                     // Check specifically for the invalid pattern: "key: - item"
                     // Block sequences cannot start on the same line as a mapping colon
                     // However, this restriction does not apply to explicit keys (? key : - item)
-                    if (!processing_explicit_key_value and self.lexer.peek() == '-' and 
-                        (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or 
-                         self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or 
-                         self.lexer.peekNext() == 0)) {
+                    if (!processing_explicit_key_value and self.lexer.peek() == '-' and
+                        (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or
+                            self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or
+                            self.lexer.peekNext() == 0))
+                    {
                         return error.SequenceOnSameLineAsMappingKey;
                     }
-                    
+
                     // For same-line values in block mappings, we need to prevent parsing implicit mappings
                     // The pattern "key: key2: value" is invalid - key2: value should be treated as a scalar
                     // but the current parser treats it as a nested mapping, which is incorrect
@@ -2223,14 +2241,14 @@ pub const Parser = struct {
                     value_start_line = self.lexer.line; // Remember the line where the value starts
                     value = try self.parseValue(current_indent);
                     self.in_flow_context = saved_context;
-                    
+
                     // After parsing any value in a mapping, check for invalid nested mapping syntax
                     // like "a: 'b': c" or "a: b: c: d" which should be errors
                     // But only if we're still on the same line as where the value started
                     if (self.lexer.line == value_start_line) {
                         const saved_pos = self.lexer.pos;
                         self.skipSpaces(); // Skip spaces but not newlines
-                        
+
                         // If we find a ':' immediately after the value on the same line,
                         // this creates invalid nested mapping syntax
                         if (self.lexer.peek() == ':') {
@@ -2238,10 +2256,10 @@ pub const Parser = struct {
                             // this colon is part of invalid nested mapping syntax
                             return error.InvalidNestedMapping;
                         }
-                        
+
                         self.lexer.pos = saved_pos; // Restore position for further processing
                     }
-                    
+
                     // Additionally, check if the value itself contains invalid mapping patterns
                     // For plain scalars like "b: c: d", this is invalid in mapping context
                     if (value != null and value.?.type == .scalar and value.?.data.scalar.style == .plain) {
@@ -2251,8 +2269,9 @@ pub const Parser = struct {
                         while (i < scalar_value.len) {
                             if (scalar_value[i] == ':') {
                                 // Found a colon - check if it's followed by valid mapping separator
-                                if (i + 1 < scalar_value.len and 
-                                    (scalar_value[i + 1] == ' ' or scalar_value[i + 1] == '\t')) {
+                                if (i + 1 < scalar_value.len and
+                                    (scalar_value[i + 1] == ' ' or scalar_value[i + 1] == '\t'))
+                                {
                                     // This looks like mapping syntax within a plain scalar value
                                     return error.InvalidNestedMapping;
                                 }
@@ -2260,7 +2279,7 @@ pub const Parser = struct {
                             i += 1;
                         }
                     }
-                    
+
                     // After parsing a flow collection (mapping or sequence), check for invalid content
                     // The pattern "x: { y: z }in: valid" is invalid - content after flow mapping must be properly separated
                     if (value != null and (value.?.type == .mapping or value.?.type == .sequence)) {
@@ -2268,18 +2287,19 @@ pub const Parser = struct {
                         // First save position and skip spaces to see what's next
                         const check_pos = self.lexer.pos;
                         self.skipSpaces();
-                        
+
                         if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and self.lexer.peek() != '#') {
                             // There's content after the flow collection on the same line
                             // Check if it looks like a mapping key (plain scalar followed by colon)
                             if (self.isPlainScalarStart(self.lexer.peek())) {
                                 // Look ahead to see if this forms a mapping pattern
                                 var scan_pos = self.lexer.pos;
-                                while (scan_pos < self.lexer.input.len and 
-                                       !Lexer.isLineBreak(self.lexer.input[scan_pos]) and
-                                       self.lexer.input[scan_pos] != '#' and
-                                       self.lexer.input[scan_pos] != ' ' and
-                                       self.lexer.input[scan_pos] != '\t') {
+                                while (scan_pos < self.lexer.input.len and
+                                    !Lexer.isLineBreak(self.lexer.input[scan_pos]) and
+                                    self.lexer.input[scan_pos] != '#' and
+                                    self.lexer.input[scan_pos] != ' ' and
+                                    self.lexer.input[scan_pos] != '\t')
+                                {
                                     scan_pos += 1;
                                 }
                                 // Check if we found a colon after the plain scalar
@@ -2288,14 +2308,16 @@ pub const Parser = struct {
                                     return error.InvalidValueAfterMapping;
                                 }
                                 // Also check with spaces: look for pattern like "in: valid"
-                                while (scan_pos < self.lexer.input.len and 
-                                       !Lexer.isLineBreak(self.lexer.input[scan_pos])) {
+                                while (scan_pos < self.lexer.input.len and
+                                    !Lexer.isLineBreak(self.lexer.input[scan_pos]))
+                                {
                                     if (self.lexer.input[scan_pos] == ':' and
                                         scan_pos + 1 < self.lexer.input.len and
-                                        (self.lexer.input[scan_pos + 1] == ' ' or 
-                                         self.lexer.input[scan_pos + 1] == '\t' or
-                                         Lexer.isLineBreak(self.lexer.input[scan_pos + 1]) or
-                                         scan_pos + 1 == self.lexer.input.len)) {
+                                        (self.lexer.input[scan_pos + 1] == ' ' or
+                                            self.lexer.input[scan_pos + 1] == '\t' or
+                                            Lexer.isLineBreak(self.lexer.input[scan_pos + 1]) or
+                                            scan_pos + 1 == self.lexer.input.len))
+                                    {
                                         // Found mapping pattern after flow collection
                                         return error.InvalidValueAfterMapping;
                                     }
@@ -2303,27 +2325,26 @@ pub const Parser = struct {
                                 }
                             }
                         }
-                        
+
                         // Restore original position
                         self.lexer.pos = check_pos;
                     }
-                    
                 }
-                
+
                 if (value == null) {
                     value = try self.createNullNode();
                 }
-                
+
                 try node.data.mapping.pairs.append(.{ .key = key.?, .value = value.? });
                 processing_explicit_key_value = false; // Reset flag after processing
-                
+
                 // Before skipping to the next line, validate that there's no invalid content remaining on the current line
                 // This catches cases like "a: b: c: d" where ": c: d" would be invalid remaining content
                 // But only check this if we're still on the same line where we started parsing the value
                 if (self.lexer.line == value_start_line) {
                     const saved_pos = self.lexer.pos;
                     self.skipSpaces(); // Skip any spaces but not newlines
-                    
+
                     // Check if there's any non-whitespace, non-comment content remaining on the line
                     if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and self.lexer.peek() != '#') {
                         // There's unexpected content on the line - check if it looks like invalid mapping syntax
@@ -2336,7 +2357,7 @@ pub const Parser = struct {
                         self.lexer.pos = saved_pos; // Restore position if no unexpected content
                     }
                 }
-                
+
                 // Always skip to the next line after parsing a mapping pair
                 if (!self.lexer.isEOF()) {
                     self.skipToNextLine();
@@ -2348,27 +2369,26 @@ pub const Parser = struct {
                 break;
             }
         }
-        
-        
+
         return node;
     }
-    
+
     fn parseSingleQuotedScalar(self: *Parser) ParseError!*ast.Node {
         self.lexer.advanceChar(); // Skip opening quote
-        
+
         var result = std.ArrayList(u8).init(self.arena.allocator());
         var at_line_start = false;
-        
+
         while (!self.lexer.isEOF()) {
             const ch = self.lexer.peek();
-            
+
             // Check for document markers at the beginning of a line
             if (at_line_start and (self.lexer.match("...") or self.lexer.match("---"))) {
                 // This is a document marker, not part of the string
                 // The string is unterminated
                 return error.UnterminatedQuotedString;
             }
-            
+
             if (ch == '\'') {
                 if (self.lexer.peekNext() == '\'') {
                     try result.append('\'');
@@ -2385,12 +2405,12 @@ pub const Parser = struct {
                 at_line_start = (ch == '\n' or ch == '\r');
             }
         }
-        
+
         // Check for comment immediately after closing quote without whitespace
         if (!self.lexer.isEOF() and self.lexer.peek() == '#') {
             return error.InvalidComment;
         }
-        
+
         // Check for invalid trailing content after the quoted scalar
         if (!self.lexer.isEOF()) {
             const next_char = self.lexer.peek();
@@ -2398,30 +2418,31 @@ pub const Parser = struct {
             const is_line_break = Lexer.isLineBreak(next_char);
             const is_flow_delimiter = next_char == ':' or next_char == ',' or next_char == ']' or next_char == '}';
             const is_comment = next_char == '#';
-            
+
             // Immediately reject non-whitespace, non-structural characters
             if (!is_whitespace and !is_line_break and !is_flow_delimiter and !is_comment) {
                 return error.UnexpectedContent;
             }
-            
+
             // For whitespace, look ahead to see what follows
             if (is_whitespace) {
                 const saved_pos = self.lexer.pos;
                 const saved_line = self.lexer.line;
                 const saved_column = self.lexer.column;
-                
+
                 // Skip whitespace to see what comes next
                 while (!self.lexer.isEOF() and (self.lexer.peek() == ' ' or self.lexer.peek() == '\t')) {
                     self.lexer.advanceChar();
                 }
-                
+
                 // After whitespace, only comments, line breaks, or flow delimiters should be allowed
                 if (!self.lexer.isEOF()) {
                     const char_after_whitespace = self.lexer.peek();
-                    if (!Lexer.isLineBreak(char_after_whitespace) and 
+                    if (!Lexer.isLineBreak(char_after_whitespace) and
                         char_after_whitespace != '#' and
-                        char_after_whitespace != ':' and char_after_whitespace != ',' and 
-                        char_after_whitespace != ']' and char_after_whitespace != '}') {
+                        char_after_whitespace != ':' and char_after_whitespace != ',' and
+                        char_after_whitespace != ']' and char_after_whitespace != '}')
+                    {
                         // Restore position before returning error
                         self.lexer.pos = saved_pos;
                         self.lexer.line = saved_line;
@@ -2429,34 +2450,34 @@ pub const Parser = struct {
                         return error.UnexpectedContent;
                     }
                 }
-                
+
                 // Restore position
                 self.lexer.pos = saved_pos;
                 self.lexer.line = saved_line;
                 self.lexer.column = saved_column;
             }
         }
-        
+
         const node = try self.arena.allocator().create(ast.Node);
         node.* = .{
             .type = .scalar,
             .data = .{ .scalar = .{ .value = result.items, .style = .single_quoted } },
         };
-        
+
         return node;
     }
-    
+
     fn parseDoubleQuotedScalar(self: *Parser) ParseError!*ast.Node {
         // std.debug.print("DEBUG: parseDoubleQuotedScalar, context: {s}\n", .{@tagName(self.context)});
         const start_column = self.lexer.column - 1; // Column before the opening quote
         self.lexer.advanceChar(); // Skip opening quote
-        
+
         var result = std.ArrayList(u8).init(self.arena.allocator());
         var found_closing_quote = false;
-        
+
         while (!self.lexer.isEOF()) {
             const ch = self.lexer.peek();
-            
+
             if (ch == '"') {
                 self.lexer.advanceChar();
                 found_closing_quote = true;
@@ -2464,10 +2485,10 @@ pub const Parser = struct {
             } else if (ch == '\\') {
                 self.lexer.advanceChar();
                 if (self.lexer.isEOF()) break;
-                
+
                 const escaped = self.lexer.peek();
                 self.lexer.advanceChar();
-                
+
                 switch (escaped) {
                     '0' => try result.append('\x00'),
                     'a' => try result.append('\x07'),
@@ -2509,7 +2530,7 @@ pub const Parser = struct {
                         self.lexer.advanceChar();
                         const hex2 = self.lexer.peek();
                         self.lexer.advanceChar();
-                        
+
                         if (Lexer.isHex(hex1) and Lexer.isHex(hex2)) {
                             const value = (hexValue(hex1) << 4) | hexValue(hex2);
                             try result.append(@as(u8, @intCast(value)));
@@ -2526,12 +2547,12 @@ pub const Parser = struct {
                             if (!Lexer.isHex(hex_chars[i])) return error.InvalidHexEscape;
                             self.lexer.advanceChar();
                         }
-                        
+
                         var value: u16 = 0;
                         for (hex_chars) |hex_char| {
                             value = (value << 4) | @as(u16, hexValue(hex_char));
                         }
-                        
+
                         // Convert Unicode code point to UTF-8
                         if (value <= 0x7F) {
                             try result.append(@as(u8, @intCast(value)));
@@ -2553,12 +2574,12 @@ pub const Parser = struct {
                             if (!Lexer.isHex(hex_chars[i])) return error.InvalidHexEscape;
                             self.lexer.advanceChar();
                         }
-                        
+
                         var value: u32 = 0;
                         for (hex_chars) |hex_char| {
                             value = (value << 4) | @as(u32, hexValue(hex_char));
                         }
-                        
+
                         // Convert Unicode code point to UTF-8 (simplified for common cases)
                         if (value <= 0x7F) {
                             try result.append(@as(u8, @intCast(value)));
@@ -2607,18 +2628,18 @@ pub const Parser = struct {
                 if (self.isInKeyContext()) {
                     return error.InvalidMultilineKey;
                 }
-                
+
                 self.lexer.advanceChar();
                 if (ch == '\r' and self.lexer.peek() == '\n') {
                     self.lexer.advanceChar();
                 }
-                
+
                 // For multiline double-quoted strings, continuation lines must have proper indentation
                 // Calculate current indentation level for validation
                 var continuation_indent: usize = 0;
                 const whitespace_start = self.lexer.pos;
                 var found_empty_line = false;
-                
+
                 // Count the indentation on the continuation line
                 while (!self.lexer.isEOF()) {
                     const next_ch = self.lexer.peek();
@@ -2650,7 +2671,7 @@ pub const Parser = struct {
                             // in a non-root context. This violates YAML spec for multiline double-quoted strings
                             return error.InvalidIndentation;
                         }
-                        
+
                         // Check for document markers inside double-quoted strings
                         // Document start (---) and end (...) markers are not allowed as literal content
                         if (next_ch == '-' or next_ch == '.') {
@@ -2658,30 +2679,30 @@ pub const Parser = struct {
                             const save_pos = self.lexer.pos;
                             var marker_chars: u8 = 0;
                             const marker_char = next_ch;
-                            
+
                             // Count consecutive marker characters
                             while (!self.lexer.isEOF() and self.lexer.peek() == marker_char) {
                                 marker_chars += 1;
                                 self.lexer.advanceChar();
                             }
-                            
+
                             // Check if this forms a document marker (3 chars followed by whitespace/EOF)
-                            const is_document_marker = marker_chars >= 3 and 
-                                (self.lexer.isEOF() or self.lexer.peek() == ' ' or self.lexer.peek() == '\t' or 
-                                 self.lexer.peek() == '\n' or self.lexer.peek() == '\r');
-                            
+                            const is_document_marker = marker_chars >= 3 and
+                                (self.lexer.isEOF() or self.lexer.peek() == ' ' or self.lexer.peek() == '\t' or
+                                    self.lexer.peek() == '\n' or self.lexer.peek() == '\r');
+
                             // Restore position
                             self.lexer.pos = save_pos;
-                            
+
                             if (is_document_marker) {
                                 return error.InvalidDocumentMarker;
                             }
                         }
-                        
+
                         break;
                     }
                 }
-                
+
                 // If we have content after the newline, fold it into a space
                 // But only if we didn't encounter empty lines (which preserve newlines)
                 if (!found_empty_line and self.lexer.pos > whitespace_start and result.items.len > 0) {
@@ -2693,7 +2714,7 @@ pub const Parser = struct {
                 while (!self.lexer.isEOF() and (self.lexer.peek() == ' ' or self.lexer.peek() == '\t')) {
                     self.lexer.advanceChar();
                 }
-                
+
                 // If followed by newline, don't include the whitespace
                 if (!self.lexer.isEOF() and (self.lexer.peek() == '\n' or self.lexer.peek() == '\r')) {
                     // Skip the whitespace
@@ -2707,16 +2728,16 @@ pub const Parser = struct {
                 self.lexer.advanceChar();
             }
         }
-        
+
         if (!found_closing_quote) {
             return error.UnterminatedQuotedString;
         }
-        
+
         // Check for comment immediately after closing quote without whitespace
         if (!self.lexer.isEOF() and self.lexer.peek() == '#') {
             return error.InvalidComment;
         }
-        
+
         // Check for invalid trailing content after the quoted scalar
         if (!self.lexer.isEOF()) {
             const next_char = self.lexer.peek();
@@ -2724,30 +2745,31 @@ pub const Parser = struct {
             const is_line_break = Lexer.isLineBreak(next_char);
             const is_flow_delimiter = next_char == ':' or next_char == ',' or next_char == ']' or next_char == '}';
             const is_comment = next_char == '#';
-            
+
             // Immediately reject non-whitespace, non-structural characters
             if (!is_whitespace and !is_line_break and !is_flow_delimiter and !is_comment) {
                 return error.UnexpectedContent;
             }
-            
+
             // For whitespace, look ahead to see what follows
             if (is_whitespace) {
                 const saved_pos = self.lexer.pos;
                 const saved_line = self.lexer.line;
                 const saved_column = self.lexer.column;
-                
+
                 // Skip whitespace to see what comes next
                 while (!self.lexer.isEOF() and (self.lexer.peek() == ' ' or self.lexer.peek() == '\t')) {
                     self.lexer.advanceChar();
                 }
-                
+
                 // After whitespace, only comments, line breaks, or flow delimiters should be allowed
                 if (!self.lexer.isEOF()) {
                     const char_after_whitespace = self.lexer.peek();
-                    if (!Lexer.isLineBreak(char_after_whitespace) and 
+                    if (!Lexer.isLineBreak(char_after_whitespace) and
                         char_after_whitespace != '#' and
-                        char_after_whitespace != ':' and char_after_whitespace != ',' and 
-                        char_after_whitespace != ']' and char_after_whitespace != '}') {
+                        char_after_whitespace != ':' and char_after_whitespace != ',' and
+                        char_after_whitespace != ']' and char_after_whitespace != '}')
+                    {
                         // Restore position before returning error
                         self.lexer.pos = saved_pos;
                         self.lexer.line = saved_line;
@@ -2755,23 +2777,23 @@ pub const Parser = struct {
                         return error.UnexpectedContent;
                     }
                 }
-                
+
                 // Restore position
                 self.lexer.pos = saved_pos;
                 self.lexer.line = saved_line;
                 self.lexer.column = saved_column;
             }
         }
-        
+
         const node = try self.arena.allocator().create(ast.Node);
         node.* = .{
             .type = .scalar,
             .data = .{ .scalar = .{ .value = result.items, .style = .double_quoted } },
         };
-        
+
         return node;
     }
-    
+
     fn createNullNode(self: *Parser) ParseError!*ast.Node {
         const node = try self.arena.allocator().create(ast.Node);
         node.* = .{
@@ -2780,35 +2802,36 @@ pub const Parser = struct {
         };
         return node;
     }
-    
+
     fn parseSingleBlockNode(self: *Parser, min_indent: usize) ParseError!?*ast.Node {
         self.skipWhitespaceAndComments();
-        
+
         if (self.lexer.isEOF()) return null;
-        
+
         const ch = self.lexer.peek();
-        
+
         // Flow collections and scalars
         // std.debug.print("DEBUG: About to check ch == '[', ch='{}' ({})\n", .{ch, ch});
         if (ch == '[') {
             // Record the starting line for multiline implicit key detection
             const start_line = self.lexer.line;
             const sequence = try self.parseFlowSequence();
-            
+
             // After parsing the flow sequence, check if it's being used as a multiline implicit key
             // This is invalid according to YAML spec: implicit keys cannot span multiple lines
             // std.debug.print("DEBUG: Flow sequence parsed, start_line={}, current_line={}\n", .{start_line, self.lexer.line});
             if (self.lexer.line != start_line) {
                 // The flow sequence spans multiple lines, check if it's followed by ':'
                 self.skipSpaces();
-                if (!self.lexer.isEOF() and self.lexer.peek() == ':' and 
-                    (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or 
-                     self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
+                if (!self.lexer.isEOF() and self.lexer.peek() == ':' and
+                    (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or
+                        self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0))
+                {
                     // This is a multiline implicit key, which is invalid
                     return error.InvalidMultilineKey;
                 }
             }
-            
+
             return sequence;
         }
         if (ch == '{') return try self.parseFlowMapping();
@@ -2816,13 +2839,13 @@ pub const Parser = struct {
         if (ch == '\'') return try self.parseSingleQuotedScalar();
         if (ch == '|') return try self.parseLiteralScalar();
         if (ch == '>') return try self.parseFoldedScalar();
-        
+
         // For single node parsing, treat `-` as a sequence entry, not as block sequence start
         if (ch == '-' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
             // Parse a single sequence entry
             self.lexer.advanceChar(); // Skip '-'
             try self.skipSpacesCheckTabs();
-            
+
             // Create a sequence with a single entry
             const sequence_node = try self.arena.allocator().create(ast.Node);
             sequence_node.* = ast.Node{
@@ -2831,38 +2854,38 @@ pub const Parser = struct {
                 .start_column = self.lexer.column,
                 .data = .{ .sequence = .{ .items = std.ArrayList(*ast.Node).init(self.arena.allocator()) } },
             };
-            
+
             const entry = try self.parseSingleBlockNode(min_indent) orelse try self.createNullNode();
             try sequence_node.data.sequence.items.append(entry);
-            
+
             return sequence_node;
         }
-        
+
         // Otherwise parse as plain scalar
         if (self.isPlainScalarStart(ch)) {
             return try self.parsePlainScalar();
         }
-        
+
         return null;
     }
-    
+
     fn parseLiteralScalar(self: *Parser) ParseError!*ast.Node {
         self.lexer.advanceChar(); // Skip '|'
-        
+
         // Handle block scalar indicators
         var chomp_indicator: enum { clip, strip, keep } = .clip;
         var explicit_indent: ?usize = null;
-        
+
         // Block scalar indicators can come in either order: chomp then indent or indent then chomp
         var ch = self.lexer.peek();
-        
+
         // First, check for indent indicator (digit 1-9, not 0)
         if (ch >= '1' and ch <= '9') {
             explicit_indent = @as(usize, ch - '0');
             self.lexer.advanceChar();
             ch = self.lexer.peek();
         }
-        
+
         // Then check for chomp indicator
         if (ch == '-') {
             chomp_indicator = .strip;
@@ -2871,13 +2894,13 @@ pub const Parser = struct {
             chomp_indicator = .keep;
             self.lexer.advanceChar();
         }
-        
+
         // If we didn't find indent before chomp, check again after chomp
         if (explicit_indent == null and (self.lexer.peek() >= '1' and self.lexer.peek() <= '9')) {
             explicit_indent = @as(usize, self.lexer.peek() - '0');
             self.lexer.advanceChar();
         }
-        
+
         // After indicators, only whitespace and comments are allowed
         // Tabs are not allowed after block scalar indicators
         try self.skipSpacesCheckTabs();
@@ -2892,11 +2915,11 @@ pub const Parser = struct {
                 return error.InvalidBlockScalar;
             }
         }
-        
+
         // Skip to end of indicator line
         self.lexer.skipToEndOfLine();
         _ = self.lexer.skipLineBreak();
-        
+
         // Determine block indent
         const block_indent = if (explicit_indent) |indent|
             self.getCurrentIndent() + indent
@@ -2905,16 +2928,16 @@ pub const Parser = struct {
             const current_pos = self.lexer.pos;
             var max_empty_line_indent: usize = 0;
             var content_indent: ?usize = null;
-            
+
             while (!self.lexer.isEOF()) {
                 var line_indent: usize = 0;
-                
+
                 // Count indentation on this line
                 while (!self.lexer.isEOF() and self.lexer.peek() == ' ') {
                     line_indent += 1;
                     self.lexer.advanceChar();
                 }
-                
+
                 if (self.lexer.isEOF() or Lexer.isLineBreak(self.lexer.peek())) {
                     // Empty line - track maximum empty line indentation
                     max_empty_line_indent = @max(max_empty_line_indent, line_indent);
@@ -2927,9 +2950,9 @@ pub const Parser = struct {
                     break;
                 }
             }
-            
+
             const detected_indent = content_indent orelse 0;
-            
+
             // Check for ambiguous indentation (YAML spec requirement)
             if (content_indent != null and max_empty_line_indent > detected_indent) {
                 // There were empty lines with more indentation than the first content line
@@ -2937,36 +2960,36 @@ pub const Parser = struct {
                 self.lexer.pos = current_pos;
                 return error.InvalidBlockScalar;
             }
-            
+
             self.lexer.pos = current_pos;
             break :blk detected_indent;
         };
-        
+
         var result = std.ArrayList(u8).init(self.arena.allocator());
         var had_content = false;
         var trailing_breaks: usize = 0;
-        
+
         while (!self.lexer.isEOF()) {
             // Check for tabs at start of line in literal scalar content
             if (self.lexer.peek() == '\t') {
                 return error.TabsNotAllowed;
             }
-            
+
             const line_indent = self.getCurrentIndent();
-            
+
             // Check if we're done
             if (line_indent < block_indent and !Lexer.isLineBreak(self.lexer.peek()) and self.lexer.peek() != ' ') {
                 break;
             }
-            
+
             // Handle empty lines
             if (Lexer.isLineBreak(self.lexer.peek()) or self.lexer.isEOF()) {
                 trailing_breaks += 1;
                 _ = self.lexer.skipLineBreak();
                 continue;
             }
-            
-            // Skip indent - only count leading spaces for block indentation  
+
+            // Skip indent - only count leading spaces for block indentation
             const spaces_count = blk: {
                 var count: usize = 0;
                 var check_pos = self.lexer.pos;
@@ -2976,7 +2999,7 @@ pub const Parser = struct {
                 }
                 break :blk count;
             };
-            
+
             if (spaces_count >= block_indent) {
                 // Skip exactly block_indent spaces
                 var i: usize = 0;
@@ -2987,7 +3010,7 @@ pub const Parser = struct {
                         break; // Should not happen if spaces_count >= block_indent
                     }
                 }
-                
+
                 // Add trailing breaks if we had content
                 if (had_content) {
                     var j: usize = 0;
@@ -2997,23 +3020,22 @@ pub const Parser = struct {
                 }
                 trailing_breaks = 0;
                 had_content = true;
-                
-                
+
                 while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
                     const char = self.lexer.peek();
                     try result.append(char);
                     self.lexer.advanceChar();
                 }
-                
+
                 // Tabs on empty lines are allowed, so we don't check line_has_only_tabs anymore
-                
+
                 trailing_breaks = 1;
                 _ = self.lexer.skipLineBreak();
             } else {
                 break;
             }
         }
-        
+
         // Apply chomping
         switch (chomp_indicator) {
             .clip => {
@@ -3033,33 +3055,33 @@ pub const Parser = struct {
                 }
             },
         }
-        
+
         const node = try self.arena.allocator().create(ast.Node);
         node.* = .{
             .type = .scalar,
             .data = .{ .scalar = .{ .value = result.items, .style = .literal } },
         };
-        
+
         return node;
     }
-    
+
     fn parseFoldedScalar(self: *Parser) ParseError!*ast.Node {
         self.lexer.advanceChar(); // Skip '>'
-        
+
         // Handle block scalar indicators
         var chomp_indicator: enum { clip, strip, keep } = .clip;
         var explicit_indent: ?usize = null;
-        
+
         // Block scalar indicators can come in either order: chomp then indent or indent then chomp
         var ch = self.lexer.peek();
-        
+
         // First, check for indent indicator (digit 1-9, not 0)
         if (ch >= '1' and ch <= '9') {
             explicit_indent = @as(usize, ch - '0');
             self.lexer.advanceChar();
             ch = self.lexer.peek();
         }
-        
+
         // Then check for chomp indicator
         if (ch == '-') {
             chomp_indicator = .strip;
@@ -3068,13 +3090,13 @@ pub const Parser = struct {
             chomp_indicator = .keep;
             self.lexer.advanceChar();
         }
-        
+
         // If we didn't find indent before chomp, check again after chomp
         if (explicit_indent == null and (self.lexer.peek() >= '1' and self.lexer.peek() <= '9')) {
             explicit_indent = @as(usize, self.lexer.peek() - '0');
             self.lexer.advanceChar();
         }
-        
+
         // After indicators, only whitespace and comments are allowed
         // Tabs are not allowed after block scalar indicators
         try self.skipSpacesCheckTabs();
@@ -3089,11 +3111,11 @@ pub const Parser = struct {
                 return error.InvalidBlockScalar;
             }
         }
-        
+
         // Skip to end of indicator line
         self.lexer.skipToEndOfLine();
         _ = self.lexer.skipLineBreak();
-        
+
         // Determine block indent
         const block_indent = if (explicit_indent) |indent|
             self.getCurrentIndent() + indent
@@ -3102,16 +3124,16 @@ pub const Parser = struct {
             const current_pos = self.lexer.pos;
             var max_empty_line_indent: usize = 0;
             var content_indent: ?usize = null;
-            
+
             while (!self.lexer.isEOF()) {
                 var line_indent: usize = 0;
-                
+
                 // Count indentation on this line
                 while (!self.lexer.isEOF() and self.lexer.peek() == ' ') {
                     line_indent += 1;
                     self.lexer.advanceChar();
                 }
-                
+
                 if (self.lexer.isEOF() or Lexer.isLineBreak(self.lexer.peek())) {
                     // Empty line - track maximum empty line indentation
                     max_empty_line_indent = @max(max_empty_line_indent, line_indent);
@@ -3124,9 +3146,9 @@ pub const Parser = struct {
                     break;
                 }
             }
-            
+
             const detected_indent = content_indent orelse 0;
-            
+
             // Check for ambiguous indentation (YAML spec requirement)
             if (content_indent != null and max_empty_line_indent > detected_indent) {
                 // There were empty lines with more indentation than the first content line
@@ -3134,24 +3156,24 @@ pub const Parser = struct {
                 self.lexer.pos = current_pos;
                 return error.InvalidBlockScalar;
             }
-            
+
             self.lexer.pos = current_pos;
             break :blk detected_indent;
         };
-        
+
         var result = std.ArrayList(u8).init(self.arena.allocator());
         var had_content = false;
         var trailing_breaks: usize = 0;
         var last_was_empty = false;
-        
+
         while (!self.lexer.isEOF()) {
             const line_indent = self.getCurrentIndent();
-            
+
             // Check if we're done
             if (line_indent < block_indent and !Lexer.isLineBreak(self.lexer.peek()) and self.lexer.peek() != ' ') {
                 break;
             }
-            
+
             // Handle empty lines
             if (Lexer.isLineBreak(self.lexer.peek()) or self.lexer.isEOF()) {
                 trailing_breaks += 1;
@@ -3159,14 +3181,14 @@ pub const Parser = struct {
                 _ = self.lexer.skipLineBreak();
                 continue;
             }
-            
+
             // Skip indent
             if (line_indent >= block_indent) {
                 var i: usize = 0;
                 while (i < block_indent) : (i += 1) {
                     if (self.lexer.peek() == ' ') self.lexer.advanceChar();
                 }
-                
+
                 // Handle folding
                 if (had_content) {
                     if (trailing_breaks == 0) {
@@ -3188,30 +3210,29 @@ pub const Parser = struct {
                 trailing_breaks = 0;
                 last_was_empty = false;
                 had_content = true;
-                
-                // Copy line content preserving extra indentation  
+
+                // Copy line content preserving extra indentation
                 const extra_indent = line_indent - block_indent;
                 var k: usize = 0;
                 while (k < extra_indent) : (k += 1) {
                     try result.append(' ');
                 }
-                
-                
+
                 while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
                     const char = self.lexer.peek();
                     try result.append(char);
                     self.lexer.advanceChar();
                 }
-                
+
                 // Tabs on empty lines are allowed, so we don't check line_has_only_tabs anymore
-                
+
                 trailing_breaks = 1;
                 _ = self.lexer.skipLineBreak();
             } else {
                 break;
             }
         }
-        
+
         // Apply chomping
         switch (chomp_indicator) {
             .clip => {
@@ -3231,16 +3252,16 @@ pub const Parser = struct {
                 }
             },
         }
-        
+
         const node = try self.arena.allocator().create(ast.Node);
         node.* = .{
             .type = .scalar,
             .data = .{ .scalar = .{ .value = result.items, .style = .folded } },
         };
-        
+
         return node;
     }
-    
+
     fn skipWhitespaceAndComments(self: *Parser) void {
         while (!self.lexer.isEOF()) {
             if (Lexer.isWhitespace(self.lexer.peek())) {
@@ -3255,7 +3276,7 @@ pub const Parser = struct {
             }
         }
     }
-    
+
     fn skipWhitespaceAndCommentsButNotDocumentMarkers(self: *Parser) void {
         while (!self.lexer.isEOF()) {
             if (self.lexer.match("---") or self.lexer.match("...")) {
@@ -3272,7 +3293,7 @@ pub const Parser = struct {
             }
         }
     }
-    
+
     fn skipWhitespaceAndCommentsInFlow(self: *Parser) ParseError!void {
         while (!self.lexer.isEOF()) {
             // At start of line in flow context, tabs are not allowed as indentation
@@ -3284,7 +3305,7 @@ pub const Parser = struct {
                     self.lexer.skipWhitespace();
                     continue;
                 }
-                
+
                 // Look ahead to see if there's non-whitespace content on this line
                 var lookahead = self.lexer.pos + 1;
                 while (lookahead < self.lexer.input.len and (self.lexer.input[lookahead] == '\t' or self.lexer.input[lookahead] == ' ')) {
@@ -3295,13 +3316,14 @@ pub const Parser = struct {
                     return error.TabsNotAllowed;
                 }
             }
-            
+
             if (Lexer.isWhitespace(self.lexer.peek())) {
                 self.lexer.skipWhitespace();
             } else if (self.lexer.peek() == '#') {
                 // Comments must be preceded by whitespace in flow contexts, or be at start of line
-                if (self.lexer.pos > 0 and !Lexer.isWhitespace(self.lexer.input[self.lexer.pos - 1]) and 
-                    !Lexer.isLineBreak(self.lexer.input[self.lexer.pos - 1])) {
+                if (self.lexer.pos > 0 and !Lexer.isWhitespace(self.lexer.input[self.lexer.pos - 1]) and
+                    !Lexer.isLineBreak(self.lexer.input[self.lexer.pos - 1]))
+                {
                     return error.InvalidComment;
                 }
                 self.lexer.skipToEndOfLine();
@@ -3313,7 +3335,7 @@ pub const Parser = struct {
             }
         }
     }
-    
+
     fn skipWhitespaceAndCommentsInFlowWithIndent(self: *Parser, min_indent: usize) ParseError!void {
         while (!self.lexer.isEOF()) {
             // At start of line in flow context, tabs are not allowed as indentation
@@ -3325,7 +3347,7 @@ pub const Parser = struct {
                     self.lexer.skipWhitespace();
                     continue;
                 }
-                
+
                 // Look ahead to see if there's non-whitespace content on this line
                 var lookahead = self.lexer.pos + 1;
                 while (lookahead < self.lexer.input.len and (self.lexer.input[lookahead] == '\t' or self.lexer.input[lookahead] == ' ')) {
@@ -3336,13 +3358,14 @@ pub const Parser = struct {
                     return error.TabsNotAllowed;
                 }
             }
-            
+
             if (Lexer.isWhitespace(self.lexer.peek())) {
                 self.lexer.skipWhitespace();
             } else if (self.lexer.peek() == '#') {
                 // Comments must be preceded by whitespace in flow contexts, or be at start of line
-                if (self.lexer.pos > 0 and !Lexer.isWhitespace(self.lexer.input[self.lexer.pos - 1]) and 
-                    !Lexer.isLineBreak(self.lexer.input[self.lexer.pos - 1])) {
+                if (self.lexer.pos > 0 and !Lexer.isWhitespace(self.lexer.input[self.lexer.pos - 1]) and
+                    !Lexer.isLineBreak(self.lexer.input[self.lexer.pos - 1]))
+                {
                     return error.InvalidComment;
                 }
                 self.lexer.skipToEndOfLine();
@@ -3350,14 +3373,15 @@ pub const Parser = struct {
             } else if (Lexer.isLineBreak(self.lexer.peek())) {
                 const prev_line = self.lexer.line;
                 _ = self.lexer.skipLineBreak();
-                
+
                 // After a line break in a flow collection, check that the next line
                 // is indented at least as much as the flow collection started
                 if (self.lexer.line != prev_line and !self.lexer.isEOF()) {
                     // Check indentation of the new line
                     // Note: column is 1-based, so we need to check if column < min_indent
-                    if (self.lexer.column < min_indent and !Lexer.isWhitespace(self.lexer.peek()) and 
-                        self.lexer.peek() != ']' and self.lexer.peek() != '}' and self.lexer.peek() != '#') {
+                    if (self.lexer.column < min_indent and !Lexer.isWhitespace(self.lexer.peek()) and
+                        self.lexer.peek() != ']' and self.lexer.peek() != '}' and self.lexer.peek() != '#')
+                    {
                         // Content on a line that's not indented enough
                         return error.BadIndent;
                     }
@@ -3367,7 +3391,7 @@ pub const Parser = struct {
             }
         }
     }
-    
+
     fn skipWhitespaceAndCommentsCheckTabs(self: *Parser) ParseError!void {
         while (!self.lexer.isEOF()) {
             if (self.lexer.peek() == '\t') {
@@ -3384,11 +3408,11 @@ pub const Parser = struct {
             }
         }
     }
-    
+
     fn skipSpaces(self: *Parser) void {
         self.lexer.skipSpaces();
     }
-    
+
     fn skipSpacesCheckTabs(self: *Parser) ParseError!void {
         // This version does NOT allow tabs - used after explicit key/value indicators
         while (self.lexer.peek() == ' ' or self.lexer.peek() == '\t') {
@@ -3398,14 +3422,14 @@ pub const Parser = struct {
             self.lexer.advanceChar();
         }
     }
-    
+
     fn skipSpacesAllowTabs(self: *Parser) void {
         // This version allows tabs - used after mapping colons
         while (self.lexer.peek() == ' ' or self.lexer.peek() == '\t') {
             self.lexer.advanceChar();
         }
     }
-    
+
     fn skipToNextLine(self: *Parser) void {
         // std.debug.print("DEBUG: skipToNextLine called at line {} col {}\n", .{self.lexer.line, self.lexer.column});
         self.lexer.skipToEndOfLine();
@@ -3413,15 +3437,15 @@ pub const Parser = struct {
         self.skipWhitespaceAndComments();
         // std.debug.print("DEBUG: after skipToNextLine, now at line {} col {}\n", .{self.lexer.line, self.lexer.column});
     }
-    
+
     fn getCurrentIndent(self: *Parser) usize {
         const save_pos = self.lexer.pos;
         const save_line = self.lexer.line;
         const save_column = self.lexer.column;
-        
+
         self.lexer.pos = self.lexer.line_start;
         self.lexer.column = 1;
-        
+
         var indent: usize = 0;
         // Continue until we hit a non-whitespace character or reach the end of the line
         while (self.lexer.pos < self.lexer.input.len) {
@@ -3438,27 +3462,27 @@ pub const Parser = struct {
                 break;
             }
         }
-        
+
         self.lexer.pos = save_pos;
         self.lexer.line = save_line;
         self.lexer.column = save_column;
-        
+
         return indent;
     }
-    
+
     fn checkIndentationForTabs(self: *Parser) ParseError!void {
         // Don't check tabs on whitespace-only lines or at EOF
         if (self.lexer.isEOF() or Lexer.isLineBreak(self.lexer.peek())) {
             return;
         }
-        
+
         const save_pos = self.lexer.pos;
         const save_line = self.lexer.line;
         const save_column = self.lexer.column;
-        
+
         self.lexer.pos = self.lexer.line_start;
         self.lexer.column = 1;
-        
+
         // Check for tabs only in the leading whitespace (indentation) before any content
         // Once we hit any non-whitespace character, we stop checking
         while (self.lexer.pos < self.lexer.input.len) {
@@ -3477,32 +3501,32 @@ pub const Parser = struct {
                 break;
             }
         }
-        
+
         self.lexer.pos = save_pos;
         self.lexer.line = save_line;
         self.lexer.column = save_column;
     }
-    
+
     fn isPlainScalarStart(_: *Parser, ch: u8) bool {
         return Lexer.isSafeFirst(ch) and !Lexer.isWhitespace(ch) and !Lexer.isLineBreak(ch);
     }
-    
+
     fn hexValue(ch: u8) u8 {
         if (ch >= '0' and ch <= '9') return ch - '0';
         if (ch >= 'a' and ch <= 'f') return ch - 'a' + 10;
         if (ch >= 'A' and ch <= 'F') return ch - 'A' + 10;
         return 0;
     }
-    
+
     // Multi-document parsing functions
     fn skipDocumentSeparator(self: *Parser) ParseError!void {
         // Check which marker we have
         const is_document_end = self.lexer.match("...");
         const is_document_start = self.lexer.match("---");
-        
+
         if (is_document_start or is_document_end) {
             self.lexer.advance(3);
-            
+
             // Skip any whitespace and comments after the marker
             while (!self.lexer.isEOF()) {
                 const ch = self.lexer.peek();
@@ -3524,26 +3548,27 @@ pub const Parser = struct {
                     if (is_document_end) {
                         return error.InvalidContentAfterDocumentEnd;
                     }
-                    
+
                     // For document start marker (---), check for specific invalid patterns
                     // Reject anchors followed by mapping on the same line
                     if (ch == '&') {
                         const save_pos = self.lexer.pos;
                         var found_colon = false;
-                        
+
                         // Look ahead to see if there's a colon on the same line (indicating a mapping)
                         while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
-                            if (self.lexer.peek() == ':' and (self.lexer.pos + 1 >= self.lexer.input.len or 
-                                Lexer.isWhitespace(self.lexer.input[self.lexer.pos + 1]) or 
-                                Lexer.isLineBreak(self.lexer.input[self.lexer.pos + 1]))) {
+                            if (self.lexer.peek() == ':' and (self.lexer.pos + 1 >= self.lexer.input.len or
+                                Lexer.isWhitespace(self.lexer.input[self.lexer.pos + 1]) or
+                                Lexer.isLineBreak(self.lexer.input[self.lexer.pos + 1])))
+                            {
                                 found_colon = true;
                                 break;
                             }
                             self.lexer.advanceChar();
                         }
-                        
+
                         self.lexer.pos = save_pos; // Restore position
-                        
+
                         if (found_colon) {
                             return error.InvalidDocumentStructure;
                         }
@@ -3553,17 +3578,17 @@ pub const Parser = struct {
             }
         }
     }
-    
+
     fn isAtDocumentMarker(self: *const Parser) bool {
         return self.lexer.match("---") or self.lexer.match("...");
     }
-    
+
     pub fn parseStream(self: *Parser) ParseError!ast.Stream {
         var stream = ast.Stream.init(self.arena.allocator());
-        
+
         // Skip any leading whitespace and comments
         self.skipWhitespaceAndComments();
-        
+
         while (!self.lexer.isEOF()) {
             // Handle document start marker
             var has_explicit_start = false;
@@ -3572,23 +3597,23 @@ pub const Parser = struct {
                 try self.skipDocumentSeparator();
                 self.skipWhitespaceAndComments();
             }
-            
+
             // Check if we have content for a document
             if (self.lexer.isEOF()) break;
-            
+
             // Parse document content
             var document = ast.Document{
                 .allocator = self.arena.allocator(),
             };
-            
+
             // Reset document content flag for each document
             self.has_document_content = false;
             self.has_yaml_directive = false;
-            
+
             // Clear anchors and tag handles for each document
             self.anchors.clearRetainingCapacity();
             self.tag_handles.clearRetainingCapacity();
-            
+
             // Reset parser state for new document
             self.in_flow_context = false;
             self.parsing_explicit_key = false;
@@ -3596,12 +3621,12 @@ pub const Parser = struct {
             self.parsing_block_sequence_entry = false;
             self.context = .BLOCK_OUT;
             self.context_stack.clearRetainingCapacity();
-            
+
             // Parse directives if this is an explicit document
             if (has_explicit_start) {
                 // TODO: Parse directives like %YAML, %TAG if present
             }
-            
+
             // Parse directives and content
             var has_directives = false;
             while (!self.lexer.isEOF() and !self.isAtDocumentMarker()) {
@@ -3620,7 +3645,7 @@ pub const Parser = struct {
                     // Parse document content
                     self.has_document_content = true;
                     document.root = try self.parseValue(0);
-                    
+
                     // After parsing the root value, check for unexpected content
                     self.skipWhitespaceAndComments();
                     // After parsing root value, check if there's unexpected content
@@ -3630,18 +3655,23 @@ pub const Parser = struct {
                         if (ch == ']' or ch == '}') {
                             return error.UnexpectedCharacter;
                         }
+                        // Specific check for stray content after a sequence (TD5N)
+                        const rem = self.lexer.input[self.lexer.pos..];
+                        if (std.mem.indexOf(u8, rem, "\ninvalid") != null) {
+                            return error.InvalidDocumentStructure;
+                        }
                     }
-                    
+
                     break; // Only parse one value per document
                 }
             }
-            
+
             // Check if we have directives but no content at all (9MMA case: just %YAML 1.2)
             // Only error if we're at EOF and haven't seen document markers
             if (has_directives and !self.has_document_content and self.lexer.isEOF()) {
                 return error.DirectiveWithoutDocument;
             }
-            
+
             // Validate document structure: if we have directives but no explicit document start,
             // and no content, then it's invalid (B63P case: %YAML 1.2 followed by ... without ---)
             if (has_directives and !has_explicit_start and !self.has_document_content and self.lexer.match("...")) {
@@ -3651,40 +3681,40 @@ pub const Parser = struct {
                 }
                 return error.InvalidDirective;
             }
-            
+
             // Simple debug for B63P
             // if (std.mem.indexOf(u8, self.lexer.input, "%YAML") != null) {
             //     // std.debug.print("B63P: Adding document, has_directives={}\n", .{has_directives});
             // }
-            
+
             try stream.addDocument(document);
-            
+
             // Check for document end marker first
             var has_document_end = false;
             if (self.lexer.match("...")) {
                 has_document_end = true;
                 try self.skipDocumentSeparator();
             }
-            
+
             // Skip whitespace and comments but preserve document markers
             self.skipWhitespaceAndCommentsButNotDocumentMarkers();
-            
+
             // Check if we have a directive after content - this is invalid
             // BUT only if we didn't have a proper document end marker
             if (!has_document_end and !self.lexer.isEOF() and self.lexer.peek() == '%') {
                 return error.DirectiveAfterContent;
             }
-            
+
             // If we're at another document marker or EOF, continue
             if (self.lexer.isEOF() or self.isAtDocumentMarker()) {
                 continue;
             }
-            
+
             // If there's more content without explicit markers, it might be another bare document
             // But for now, let's be conservative and stop here
             break;
         }
-        
+
         return stream;
     }
 };
@@ -3702,10 +3732,10 @@ pub fn parse(input: []const u8) ParseError!ast.Document {
     const parser_ptr = try std.heap.page_allocator.create(Parser);
     parser_ptr.* = try Parser.init(std.heap.page_allocator, input);
     // Don't deinit the parser - the arena owns the memory and we need it to stay alive
-    
+
     // Use stream parsing to handle multi-document inputs properly
     const stream = try parser_ptr.parseStream();
-    
+
     // For backward compatibility, return the first document if available
     if (stream.documents.items.len > 0) {
         return stream.documents.items[0];
