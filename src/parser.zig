@@ -1248,13 +1248,13 @@ pub const Parser = struct {
                 const start_line = self.lexer.line;
                 const item = try self.parseValue(0);
                 if (item) |value| {
-                    const end_line_before_skip = self.lexer.line;
                     try self.skipWhitespaceAndCommentsInFlow();
                     
                     // Check if this is a mapping key
                     if (self.lexer.peek() == ':') {
-                        // Check if the key spans multiple lines (invalid for implicit keys in flow context)
-                        if (end_line_before_skip != start_line) {
+                        // Check if the colon is on a different line than where the key started
+                        // (invalid for implicit keys in flow context)
+                        if (self.lexer.line != start_line) {
                             return error.InvalidMultilineKey;
                         }
                         
