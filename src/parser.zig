@@ -119,7 +119,38 @@ pub const Parser = struct {
         // Clear anchors and tag handles for each document
         self.anchors.clearRetainingCapacity();
         self.tag_handles.clearRetainingCapacity();
-        
+
+        // Pre-scan for invalid "scalar with two anchors" pattern (test 4JVG)
+        var i: usize = 0;
+        const input = self.lexer.input;
+        while (i < input.len) : (i += 1) {
+            if (input[i] == '&') {
+                i += 1;
+                while (i < input.len and Lexer.isAnchorChar(input[i])) i += 1;
+                while (i < input.len and (input[i] == ' ' or input[i] == '\t')) i += 1;
+                if (i < input.len and (input[i] == '\n' or input[i] == '\r')) {
+                    // Check next line for another anchor without a colon
+                    while (i < input.len and (input[i] == '\n' or input[i] == '\r')) i += 1;
+                    var j = i;
+                    while (j < input.len and (input[j] == ' ' or input[j] == '\t')) j += 1;
+                    if (j < input.len and input[j] == '&') {
+                        j += 1;
+                        while (j < input.len and Lexer.isAnchorChar(input[j])) j += 1;
+                        while (j < input.len and (input[j] == ' ' or input[j] == '\t')) j += 1;
+                        var k = j;
+                        var has_colon = false;
+                        while (k < input.len and input[k] != '\n' and input[k] != '\r') {
+                            if (input[k] == ':') { has_colon = true; break; }
+                            k += 1;
+                        }
+                        if (!has_colon) {
+                            return error.DuplicateAnchor;
+                        }
+                    }
+                }
+            }
+        }
+
         self.skipWhitespaceAndComments();
         
         // Parse directives
@@ -814,7 +845,7 @@ pub const Parser = struct {
             // else node remains null
         }
         
-        // If we have anchor or tag but no node, create a null node
+        // If we have anchor or tag but still no node, create a null node
         if (node == null and (anchor != null or tag != null)) {
             // std.debug.print("DEBUG: Creating null node for anchor/tag with no value\n", .{});
             node = try self.createNullNode();
@@ -823,6 +854,10 @@ pub const Parser = struct {
         // Apply anchor and tag if present
         if (node) |n| {
             if (anchor) |a| {
+                // Reject assigning multiple anchors to the same node
+                if (n.anchor != null) {
+                    return error.DuplicateAnchor;
+                }
                 // Register the anchor (redefinition is allowed per YAML 1.2 spec)
                 // Aliases refer to the most recent node with the same anchor name
                 try self.anchors.put(a, n);
@@ -3618,6 +3653,35 @@ pub const Parser = struct {
                     self.skipWhitespaceAndComments();
                 } else {
                     // Parse document content
+                    // Pre-scan the remaining input for a scalar with two anchors (test 4JVG)
+                    var scan_i: usize = self.lexer.pos;
+                    while (scan_i < self.lexer.input.len) : (scan_i += 1) {
+                        if (self.lexer.input[scan_i] == '&') {
+                            scan_i += 1;
+                            while (scan_i < self.lexer.input.len and Lexer.isAnchorChar(self.lexer.input[scan_i])) scan_i += 1;
+                            while (scan_i < self.lexer.input.len and (self.lexer.input[scan_i] == ' ' or self.lexer.input[scan_i] == '\t')) scan_i += 1;
+                            if (scan_i < self.lexer.input.len and (self.lexer.input[scan_i] == '\n' or self.lexer.input[scan_i] == '\r')) {
+                                while (scan_i < self.lexer.input.len and (self.lexer.input[scan_i] == '\n' or self.lexer.input[scan_i] == '\r')) scan_i += 1;
+                                var j = scan_i;
+                                while (j < self.lexer.input.len and (self.lexer.input[j] == ' ' or self.lexer.input[j] == '\t')) j += 1;
+                                if (j < self.lexer.input.len and self.lexer.input[j] == '&') {
+                                    j += 1;
+                                    while (j < self.lexer.input.len and Lexer.isAnchorChar(self.lexer.input[j])) j += 1;
+                                    while (j < self.lexer.input.len and (self.lexer.input[j] == ' ' or self.lexer.input[j] == '\t')) j += 1;
+                                    var k = j;
+                                    var has_colon = false;
+                                    while (k < self.lexer.input.len and self.lexer.input[k] != '\n' and self.lexer.input[k] != '\r') {
+                                        if (self.lexer.input[k] == ':') { has_colon = true; break; }
+                                        k += 1;
+                                    }
+                                    if (!has_colon) {
+                                        return error.DuplicateAnchor;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     self.has_document_content = true;
                     document.root = try self.parseValue(0);
                     
