@@ -3679,12 +3679,11 @@ pub const Parser = struct {
             if (self.lexer.isEOF() or self.isAtDocumentMarker()) {
                 continue;
             }
-            
-            // If there's more content without explicit markers, it might be another bare document
-            // But for now, let's be conservative and stop here
-            break;
+
+            // Any other content after a complete document is invalid
+            return error.InvalidContentAfterDocumentEnd;
         }
-        
+
         return stream;
     }
 };
