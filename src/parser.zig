@@ -2034,6 +2034,45 @@ pub const Parser = struct {
                     const value_indent = self.getCurrentIndent();
                     if (value_indent > current_indent) {
                         value = try self.parseValue(value_indent);
+                    } else if (value_indent == current_indent and current_indent == 0) {
+                        // Check if we have an anchor at zero indentation followed by a sequence
+                        // This creates an invalid structure in YAML
+                        const ch = self.lexer.peek();
+                        if (ch == '&') {
+                            // Save position to check what follows the anchor
+                            const save_pos = self.lexer.pos;
+                            const save_line = self.lexer.line;
+                            const save_column = self.lexer.column;
+                            
+                            // Skip the anchor
+                            self.lexer.advanceChar(); // Skip '&'
+                            while (!self.lexer.isEOF() and Lexer.isAnchorChar(self.lexer.peek())) {
+                                self.lexer.advanceChar();
+                            }
+                            self.skipSpaces();
+                            
+                            // Check if anchor is on its own line followed by a sequence
+                            if (Lexer.isLineBreak(self.lexer.peek()) or self.lexer.isEOF()) {
+                                self.skipWhitespaceAndComments();
+                                if (!self.lexer.isEOF()) {
+                                    const next_indent = self.getCurrentIndent();
+                                    const next_ch = self.lexer.peek();
+                                    
+                                    if (next_indent == 0 and next_ch == '-' and 
+                                        (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or 
+                                         self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or 
+                                         self.lexer.peekNext() == 0)) {
+                                        // Invalid: anchor on its own line followed by sequence at zero indent
+                                        return error.InvalidAnchor;
+                                    }
+                                }
+                            }
+                            
+                            // Restore position
+                            self.lexer.pos = save_pos;
+                            self.lexer.line = save_line;
+                            self.lexer.column = save_column;
+                        }
                     }
                 } else {
                     // Check specifically for the invalid pattern: "key: - item"
