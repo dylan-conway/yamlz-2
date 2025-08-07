@@ -947,8 +947,10 @@ pub const Parser = struct {
         // In FLOW_KEY contexts, multiline is allowed (per YAML spec example 9.4)
         // In flow contexts, multiline is allowed
         // In block contexts, multiline is allowed except in key contexts
-        const allow_multiline = (self.context != .BLOCK_KEY) and 
+        const allow_multiline = (self.context != .BLOCK_KEY) and
                                 (self.isInFlowContext() or self.mapping_context_indent == null);
+        const allow_multiline_effective = allow_multiline or
+            (self.parsing_block_sequence_entry and self.nextLineHasTabAfterIndent());
         
         
         // Special check for invalid multiline implicit keys even when multiline is not allowed
@@ -1072,7 +1074,7 @@ pub const Parser = struct {
             }
         }
         
-        if (!self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek()) and allow_multiline) {
+        if (!self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek()) and allow_multiline_effective) {
             var first_continuation_indent: ?usize = null;
             var comment_interrupted_previous_line = false;
             
@@ -3486,6 +3488,19 @@ pub const Parser = struct {
         self.lexer.column = save_column;
         
         return indent;
+    }
+
+    fn nextLineHasTabAfterIndent(self: *Parser) bool {
+        // Assumes current character is a line break.
+        var idx = self.lexer.pos + 1;
+        if (self.lexer.peek() == '\r' and idx < self.lexer.input.len and self.lexer.input[idx] == '\n') {
+            idx += 1;
+        }
+        // Skip over spaces on the next line.
+        while (idx < self.lexer.input.len and self.lexer.input[idx] == ' ') {
+            idx += 1;
+        }
+        return idx < self.lexer.input.len and self.lexer.input[idx] == '\t';
     }
     
     fn checkIndentationForTabs(self: *Parser) ParseError!void {
