@@ -2,9 +2,9 @@
 
 ## Quick Status
 
-- **Current**: 387/402 tests passing (96.3%)
+- **Current**: 391/402 tests passing (97.3%)
 - **Target**: 402/402 (100%)
-- **Gap**: 15 tests to fix
+- **Gap**: 11 tests to fix
 - **Run tests**: `./zig/zig build test-yaml -- zig`
 
 ## Project Overview
@@ -47,24 +47,27 @@ Successfully fixed 40+ tests in recent commits:
 - ✅ **BEC7**: Accept future YAML versions (1.3+) as per spec
 - ✅ **And more...**
 
-## Remaining Work (15 Failing Tests)
+## Remaining Work (11 Failing Tests)
 
 ### Current Failing Tests:
 
 - **UV7Q**: Tab/indentation issues
-- **XLQ9**: Invalid scalar after document marker
 - **4JVG**: Scalar value with two anchors
 - **BD7L**: Invalid mapping after sequence
 - **TD5N**: Invalid content after sequence
-- **J3BT**: Tab handling after colons
 - **7MNF**: Missing colon validation
 - **KS4U**: Invalid content after document end
 - **QLJ7**: Tag shorthand validation
 - **9CWY**: Invalid content at wrong indentation
-- **U44R**: Bad indentation in mappings
 - **4HVU**: Inconsistent sequence indentation
 - **6S55**: Invalid content validation
 - **BS4K**: Comment between plain scalar lines
+
+### Recently Fixed (since last update):
+
+- **XLQ9**: Invalid scalar after document marker
+- **J3BT**: Tab handling after colons
+- **U44R**: Bad indentation in mappings
 - **Q9WF**: Directive with non-printable character
 
 ## Key Resources
