@@ -2122,7 +2122,7 @@ pub const Parser = struct {
                     }
                     
                     self.skipSpaces();
-                    
+
                     if (self.lexer.peek() != ':') {
                         // In a block mapping, if we parse something that looks like a plain scalar key
                         // but doesn't have a colon, check if it's actually invalid content
@@ -2135,12 +2135,14 @@ pub const Parser = struct {
                             // Check if this looks like valid YAML content that's just not a key
                             const scalar_value = key.?.data.scalar.value;
                             // If it starts with special characters, it might be valid non-key content
-                            if (scalar_value[0] != '&' and scalar_value[0] != '*' and 
+                            if (scalar_value[0] != '&' and scalar_value[0] != '*' and
                                 scalar_value[0] != '!' and scalar_value[0] != '-' and
                                 scalar_value[0] != '[' and scalar_value[0] != '{' and
                                 scalar_value[0] != '.') {
-                                // This looks like a plain word that's not a key - invalid
-                                return error.InvalidValueAfterMapping;
+                                // A plain word at the mapping indent without a colon
+                                // indicates a missing colon after a mapping key
+                                self.arena.allocator().destroy(key.?);
+                                return error.ExpectedColon;
                             }
                         }
                         self.arena.allocator().destroy(key.?);
@@ -2337,8 +2339,8 @@ pub const Parser = struct {
                     }
                 }
                 
-                // Always skip to the next line after parsing a mapping pair
-                if (!self.lexer.isEOF()) {
+                // If there's a newline or comment after this value, skip to the next content line
+                if (!self.lexer.isEOF() and (Lexer.isLineBreak(self.lexer.peek()) or self.lexer.peek() == '#')) {
                     self.skipToNextLine();
                 }
             } else {
