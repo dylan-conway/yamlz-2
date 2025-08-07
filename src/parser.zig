@@ -2009,6 +2009,13 @@ pub const Parser = struct {
                             self.lexer.line = save_line;
                             self.lexer.column = save_column;
                         }
+                        // If the line starts with a sequence indicator at an indentation level
+                        // that doesn't align with this mapping, it's an inconsistent sequence
+                        // indentation (e.g., test 4HVU).
+                        if (self.lexer.peek() == '-' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0) and current_indent > map_indent) {
+                            return error.InconsistentIndentation;
+                        }
+
                         break;
                     }
                 } else {
