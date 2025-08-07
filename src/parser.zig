@@ -54,6 +54,7 @@ pub const ParseError = error{
     InvalidValueAfterMapping,
     SequenceOnSameLineAsMappingKey,
     InvalidContentAfterDocumentEnd,
+    BadIndent,
 };
 
 pub const Parser = struct {
@@ -1263,6 +1264,8 @@ pub const Parser = struct {
     }
     
     fn parseFlowSequence(self: *Parser) ParseError!*ast.Node {
+        // Record the column where the flow sequence starts (before advancing past '[')
+        const flow_indent = self.lexer.column;
         self.lexer.advanceChar(); // Skip '['
         const saved_flow_context = self.in_flow_context;
         self.in_flow_context = true;
@@ -1272,7 +1275,7 @@ pub const Parser = struct {
         try self.pushContext(.FLOW_IN);
         defer self.popContext();
         
-        try self.skipWhitespaceAndCommentsInFlow();
+        try self.skipWhitespaceAndCommentsInFlowWithIndent(flow_indent);
         
         const node = try self.arena.allocator().create(ast.Node);
         node.* = .{
@@ -1291,7 +1294,7 @@ pub const Parser = struct {
                 }
                 // Check for consecutive commas (empty entry)
                 self.lexer.advanceChar();
-                try self.skipWhitespaceAndCommentsInFlow();
+                try self.skipWhitespaceAndCommentsInFlowWithIndent(flow_indent);
                 if (self.lexer.peek() == ',') {
                     // Empty entry not allowed (consecutive commas)
                     return error.EmptyFlowEntry;
@@ -1304,7 +1307,7 @@ pub const Parser = struct {
             if (self.lexer.peek() == ':') {
                 // Empty key mapping
                 self.lexer.advanceChar(); // Skip ':'
-                try self.skipWhitespaceAndCommentsInFlow();
+                try self.skipWhitespaceAndCommentsInFlowWithIndent(flow_indent);
                 
                 const map_value = try self.parseValue(0) orelse try self.createNullNode();
                 
@@ -1323,7 +1326,7 @@ pub const Parser = struct {
                 const start_line = self.lexer.line;
                 const item = try self.parseValue(0);
                 if (item) |value| {
-                    try self.skipWhitespaceAndCommentsInFlow();
+                    try self.skipWhitespaceAndCommentsInFlowWithIndent(flow_indent);
                     
                     // Check if this is a mapping key
                     if (self.lexer.peek() == ':') {
@@ -1335,7 +1338,7 @@ pub const Parser = struct {
                         
                         // This is a single-pair mapping
                         self.lexer.advanceChar(); // Skip ':'
-                        try self.skipWhitespaceAndCommentsInFlow();
+                        try self.skipWhitespaceAndCommentsInFlowWithIndent(flow_indent);
                         
                         const map_value = try self.parseValue(0) orelse try self.createNullNode();
                         
@@ -1354,7 +1357,7 @@ pub const Parser = struct {
                 }
             }
             
-            try self.skipWhitespaceAndCommentsInFlow();
+            try self.skipWhitespaceAndCommentsInFlowWithIndent(flow_indent);
             
             // Don't consume trailing comma yet
         }
@@ -1375,6 +1378,8 @@ pub const Parser = struct {
     }
     
     fn parseFlowMapping(self: *Parser) ParseError!*ast.Node {
+        // Record the column where the flow mapping starts (before advancing past '{')
+        const flow_indent = self.lexer.column;
         self.lexer.advanceChar(); // Skip '{'
         const saved_flow_context = self.in_flow_context;
         self.in_flow_context = true;
@@ -1384,7 +1389,7 @@ pub const Parser = struct {
         try self.pushContext(.FLOW_IN);
         defer self.popContext();
         
-        try self.skipWhitespaceAndCommentsInFlow();
+        try self.skipWhitespaceAndCommentsInFlowWithIndent(flow_indent);
         
         const node = try self.arena.allocator().create(ast.Node);
         node.* = .{
@@ -1396,7 +1401,7 @@ pub const Parser = struct {
             // // std.debug.print("Debug: Flow mapping loop, pos={}, char='{}' (0x{x})\n", .{self.lexer.pos, self.lexer.peek(), self.lexer.peek()});
             if (self.lexer.peek() == ',') {
                 self.lexer.advanceChar();
-                try self.skipWhitespaceAndCommentsInFlow();
+                try self.skipWhitespaceAndCommentsInFlowWithIndent(flow_indent);
                 // Check for trailing comma
                 if (self.lexer.peek() == '}') {
                     break;
@@ -1413,12 +1418,12 @@ pub const Parser = struct {
                 // Explicit key indicator
                 self.lexer.advanceChar(); // Skip '?'
                 try self.skipSpacesCheckTabs();
-                try self.skipWhitespaceAndCommentsInFlow();
+                try self.skipWhitespaceAndCommentsInFlowWithIndent(flow_indent);
                 // Push FLOW_KEY context for explicit key parsing
                 try self.pushContext(.FLOW_KEY);
                 key = try self.parseValue(0) orelse try self.createNullNode();
                 self.popContext();
-                try self.skipWhitespaceAndCommentsInFlow();
+                try self.skipWhitespaceAndCommentsInFlowWithIndent(flow_indent);
             } else {
                 // Push FLOW_KEY context for implicit key parsing
                 try self.pushContext(.FLOW_KEY);
@@ -1436,7 +1441,7 @@ pub const Parser = struct {
             } else if (self.lexer.peek() == ':') {
                 // Explicit colon separator
                 self.lexer.advanceChar();
-                try self.skipWhitespaceAndCommentsInFlow();
+                try self.skipWhitespaceAndCommentsInFlowWithIndent(flow_indent);
                 
                 if (self.lexer.peek() == ',' or self.lexer.peek() == '}') {
                     value = try self.createNullNode();
@@ -1463,7 +1468,7 @@ pub const Parser = struct {
             
             if (self.lexer.peek() == ',') {
                 self.lexer.advanceChar();
-                try self.skipWhitespaceAndCommentsInFlow();
+                try self.skipWhitespaceAndCommentsInFlowWithIndent(flow_indent);
             } else {
                 // No comma and not closing brace - error
                 // std.debug.print("Debug: Expected comma or brace, but found '{}' (0x{x}) at pos {}\n", .{self.lexer.peek(), self.lexer.peek(), self.lexer.pos});
@@ -3132,6 +3137,60 @@ pub const Parser = struct {
                 _ = self.lexer.skipLineBreak();
             } else if (Lexer.isLineBreak(self.lexer.peek())) {
                 _ = self.lexer.skipLineBreak();
+            } else {
+                break;
+            }
+        }
+    }
+    
+    fn skipWhitespaceAndCommentsInFlowWithIndent(self: *Parser, min_indent: usize) ParseError!void {
+        while (!self.lexer.isEOF()) {
+            // At start of line in flow context, tabs are not allowed as indentation
+            // But only if they're followed by content on the same line AND we're not at document level
+            if (self.lexer.column == 1 and self.lexer.peek() == '\t') {
+                // Allow tabs at document level (shallow nesting)
+                if (self.context_stack.items.len <= 1) {
+                    // At document level, tabs are allowed for flow sequences/mappings
+                    self.lexer.skipWhitespace();
+                    continue;
+                }
+                
+                // Look ahead to see if there's non-whitespace content on this line
+                var lookahead = self.lexer.pos + 1;
+                while (lookahead < self.lexer.input.len and (self.lexer.input[lookahead] == '\t' or self.lexer.input[lookahead] == ' ')) {
+                    lookahead += 1;
+                }
+                if (lookahead < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[lookahead])) {
+                    // Tab is being used as indentation before content
+                    return error.TabsNotAllowed;
+                }
+            }
+            
+            if (Lexer.isWhitespace(self.lexer.peek())) {
+                self.lexer.skipWhitespace();
+            } else if (self.lexer.peek() == '#') {
+                // Comments must be preceded by whitespace in flow contexts, or be at start of line
+                if (self.lexer.pos > 0 and !Lexer.isWhitespace(self.lexer.input[self.lexer.pos - 1]) and 
+                    !Lexer.isLineBreak(self.lexer.input[self.lexer.pos - 1])) {
+                    return error.InvalidComment;
+                }
+                self.lexer.skipToEndOfLine();
+                _ = self.lexer.skipLineBreak();
+            } else if (Lexer.isLineBreak(self.lexer.peek())) {
+                const prev_line = self.lexer.line;
+                _ = self.lexer.skipLineBreak();
+                
+                // After a line break in a flow collection, check that the next line
+                // is indented at least as much as the flow collection started
+                if (self.lexer.line != prev_line and !self.lexer.isEOF()) {
+                    // Check indentation of the new line
+                    // Note: column is 1-based, so we need to check if column < min_indent
+                    if (self.lexer.column < min_indent and !Lexer.isWhitespace(self.lexer.peek()) and 
+                        self.lexer.peek() != ']' and self.lexer.peek() != '}' and self.lexer.peek() != '#') {
+                        // Content on a line that's not indented enough
+                        return error.BadIndent;
+                    }
+                }
             } else {
                 break;
             }
