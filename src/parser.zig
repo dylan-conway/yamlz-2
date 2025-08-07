@@ -600,6 +600,11 @@ pub const Parser = struct {
             if (current_column < min_indent) return null;
             
             if (ch == '-' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
+                // If we have an anchor before a block sequence entry, it must be on a separate line
+                // Tags are allowed, but anchors are not
+                if (anchor != null) {
+                    return error.UnexpectedCharacter;
+                }
                 // std.debug.print("DEBUG: Starting block sequence at column {}, min_indent = {}\n", .{self.lexer.column, min_indent});
                 // Check if there's content on the same line after the '-'
                 // const save_pos = self.lexer.pos;
