@@ -316,7 +316,12 @@ pub const Parser = struct {
                     }
                 } else {
                     // Handle shorthand tags
-                    while (!self.lexer.isEOF() and !Lexer.isWhitespace(self.lexer.peek()) and !Lexer.isFlowIndicator(self.lexer.peek()) and self.lexer.peek() != ':') {
+                    while (!self.lexer.isEOF()) {
+                        const next_ch = self.lexer.peek();
+                        // Tags cannot contain whitespace, flow indicators (including comma), or colons
+                        if (Lexer.isWhitespace(next_ch) or Lexer.isFlowIndicator(next_ch) or next_ch == ':') {
+                            break;
+                        }
                         self.lexer.advanceChar();
                     }
                 }
@@ -324,6 +329,12 @@ pub const Parser = struct {
                 tag = self.lexer.input[start - 1..self.lexer.pos]; // Include the '!'
                 // Only skip spaces on the same line, not newlines
                 self.skipSpaces();
+                
+                // After a tag, validate what follows
+                // In block context, a comma directly after a tag is invalid
+                if (!self.in_flow_context and self.lexer.peek() == ',') {
+                    return error.InvalidTag;
+                }
             } else if (ch == '*') {
                 // Alias
                 
