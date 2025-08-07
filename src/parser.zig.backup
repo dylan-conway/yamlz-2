@@ -129,7 +129,97 @@ pub const Parser = struct {
                 if (self.has_document_content) {
                     return error.DirectiveAfterContent;
                 }
-                try self.parseDirective();
+                self.lexer.advanceChar(); // Skip '%'
+                
+                // Parse directive name
+                const directive_start = self.lexer.pos;
+                while (!self.lexer.isEOF() and !Lexer.isWhitespace(self.lexer.peek()) and !Lexer.isLineBreak(self.lexer.peek())) {
+                    self.lexer.advanceChar();
+                }
+                const directive_name = self.lexer.input[directive_start..self.lexer.pos];
+                
+                if (std.mem.eql(u8, directive_name, "YAML")) {
+                    if (self.has_yaml_directive) {
+                        return error.DuplicateYamlDirective;
+                    }
+                    self.has_yaml_directive = true;
+                    
+                    // Skip whitespace (including tabs) and parse version
+                    while (!self.lexer.isEOF() and Lexer.isWhitespace(self.lexer.peek())) {
+                        self.lexer.advanceChar();
+                    }
+                    const version_start = self.lexer.pos;
+                    while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and !Lexer.isWhitespace(self.lexer.peek()) and self.lexer.peek() != '#') {
+                        self.lexer.advanceChar();
+                    }
+                    const version_end = self.lexer.pos;
+                    
+                    // Check for comment without preceding whitespace
+                    if (self.lexer.peek() == '#') {
+                        // Comments must be preceded by whitespace
+                        return error.InvalidDirective;
+                    }
+                    
+                    // Skip any trailing whitespace before comment or line end
+                    while (!self.lexer.isEOF() and Lexer.isWhitespace(self.lexer.peek())) {
+                        self.lexer.advanceChar();
+                    }
+                    
+                    // Check for extra content after version (should only be comment or line end)
+                    if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and self.lexer.peek() != '#') {
+                        // Extra content after YAML version - error
+                        return error.InvalidDirective;
+                    }
+                    
+                    const version = self.lexer.input[version_start..version_end];
+                    
+                    // Support both YAML 1.1 and 1.2
+                    if (!std.mem.eql(u8, version, "1.1") and !std.mem.eql(u8, version, "1.2")) {
+                        return error.UnsupportedYamlVersion;
+                    }
+                } else if (std.mem.eql(u8, directive_name, "TAG")) {
+                    // Parse TAG directive
+                    // Skip whitespace to tag handle
+                    while (!self.lexer.isEOF() and Lexer.isWhitespace(self.lexer.peek())) {
+                        self.lexer.advanceChar();
+                    }
+                    
+                    // Parse tag handle (e.g., !e!)
+                    const handle_start = self.lexer.pos;
+                    if (self.lexer.peek() == '!') {
+                        self.lexer.advanceChar(); // First !
+                        // Parse handle characters
+                        while (!self.lexer.isEOF() and !Lexer.isWhitespace(self.lexer.peek()) and self.lexer.peek() != '!') {
+                            self.lexer.advanceChar();
+                        }
+                        if (self.lexer.peek() == '!') {
+                            self.lexer.advanceChar(); // Closing !
+                        }
+                    }
+                    const handle = self.lexer.input[handle_start..self.lexer.pos];
+                    
+                    // Skip whitespace to prefix
+                    while (!self.lexer.isEOF() and Lexer.isWhitespace(self.lexer.peek())) {
+                        self.lexer.advanceChar();
+                    }
+                    
+                    // Parse tag prefix (URI)
+                    const prefix_start = self.lexer.pos;
+                    while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and !Lexer.isWhitespace(self.lexer.peek()) and self.lexer.peek() != '#') {
+                        self.lexer.advanceChar();
+                    }
+                    const prefix = self.lexer.input[prefix_start..self.lexer.pos];
+                    
+                    // Store the tag handle mapping
+                    try self.tag_handles.put(handle, prefix);
+                } else {
+                    // Unknown directive - skip it with a warning (not an error)
+                    self.lexer.skipToEndOfLine();
+                }
+                
+                // Skip to end of line
+                self.lexer.skipToEndOfLine();
+                _ = self.lexer.skipLineBreak();
                 self.skipWhitespaceAndComments();
             } else if (self.lexer.match("---")) {
                 self.lexer.advance(3);
@@ -184,102 +274,6 @@ pub const Parser = struct {
         };
     }
     
-    
-    fn parseDirective(self: *Parser) ParseError!void {
-        // We're at a '%' character
-        self.lexer.advanceChar(); // Skip '%'
-        
-        // Parse directive name
-        const directive_start = self.lexer.pos;
-        while (!self.lexer.isEOF() and !Lexer.isWhitespace(self.lexer.peek()) and !Lexer.isLineBreak(self.lexer.peek())) {
-            self.lexer.advanceChar();
-        }
-        const directive_name = self.lexer.input[directive_start..self.lexer.pos];
-        
-        if (std.mem.eql(u8, directive_name, "YAML")) {
-            if (self.has_yaml_directive) {
-                return error.DuplicateYamlDirective;
-            }
-            self.has_yaml_directive = true;
-            
-            // Skip whitespace (including tabs) and parse version
-            while (!self.lexer.isEOF() and Lexer.isWhitespace(self.lexer.peek())) {
-                self.lexer.advanceChar();
-            }
-            const version_start = self.lexer.pos;
-            while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and !Lexer.isWhitespace(self.lexer.peek()) and self.lexer.peek() != '#') {
-                self.lexer.advanceChar();
-            }
-            const version_end = self.lexer.pos;
-            
-            // Check for comment without preceding whitespace
-            if (self.lexer.peek() == '#') {
-                // Comments must be preceded by whitespace
-                return error.InvalidDirective;
-            }
-            
-            // Skip any trailing whitespace before comment or line end
-            while (!self.lexer.isEOF() and Lexer.isWhitespace(self.lexer.peek())) {
-                self.lexer.advanceChar();
-            }
-            
-            // Check for extra content after version (should only be comment or line end)
-            if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and self.lexer.peek() != '#') {
-                // Extra content after YAML version - error
-                return error.InvalidDirective;
-            }
-            
-            const version = self.lexer.input[version_start..version_end];
-            
-            // Support both YAML 1.1 and 1.2
-            if (!std.mem.eql(u8, version, "1.1") and !std.mem.eql(u8, version, "1.2")) {
-                return error.UnsupportedYamlVersion;
-            }
-        } else if (std.mem.eql(u8, directive_name, "TAG")) {
-            // Parse TAG directive
-            // Skip whitespace to tag handle
-            while (!self.lexer.isEOF() and Lexer.isWhitespace(self.lexer.peek())) {
-                self.lexer.advanceChar();
-            }
-            
-            // Parse tag handle (e.g., !e!)
-            const handle_start = self.lexer.pos;
-            if (self.lexer.peek() == '!') {
-                self.lexer.advanceChar(); // First !
-                // Parse handle characters
-                while (!self.lexer.isEOF() and !Lexer.isWhitespace(self.lexer.peek()) and self.lexer.peek() != '!') {
-                    self.lexer.advanceChar();
-                }
-                if (self.lexer.peek() == '!') {
-                    self.lexer.advanceChar(); // Closing !
-                }
-            }
-            const handle = self.lexer.input[handle_start..self.lexer.pos];
-            
-            // Skip whitespace to prefix
-            while (!self.lexer.isEOF() and Lexer.isWhitespace(self.lexer.peek())) {
-                self.lexer.advanceChar();
-            }
-            
-            // Parse tag prefix (URI)
-            const prefix_start = self.lexer.pos;
-            while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and !Lexer.isWhitespace(self.lexer.peek()) and self.lexer.peek() != '#') {
-                self.lexer.advanceChar();
-            }
-            const prefix = self.lexer.input[prefix_start..self.lexer.pos];
-            
-            // Store the tag handle mapping
-            try self.tag_handles.put(handle, prefix);
-        } else {
-            // Unknown directive - skip it with a warning (not an error)
-            // Already at end of directive name, just skip rest of line
-        }
-        
-        // Skip to end of line
-        self.lexer.skipToEndOfLine();
-        _ = self.lexer.skipLineBreak();
-    }
-
     fn parseValue(self: *Parser, min_indent: usize) ParseError!?*ast.Node {
         // std.debug.print("DEBUG: parseValue called, min_indent={}, peek='{}'\n", .{min_indent, self.lexer.peek()});
         self.skipWhitespaceAndComments();
@@ -322,37 +316,14 @@ pub const Parser = struct {
                     }
                 } else {
                     // Handle shorthand tags
-                    while (!self.lexer.isEOF()) {
-                        const next_ch = self.lexer.peek();
-                        // Tags cannot contain whitespace, flow indicators (including comma), or colons
-                        if (Lexer.isWhitespace(next_ch) or Lexer.isFlowIndicator(next_ch) or next_ch == ':') {
-                            break;
-                        }
+                    while (!self.lexer.isEOF() and !Lexer.isWhitespace(self.lexer.peek()) and !Lexer.isFlowIndicator(self.lexer.peek()) and self.lexer.peek() != ':') {
                         self.lexer.advanceChar();
-                    }
-                    
-                    // After a tag, we cannot have { or [ directly attached (these would be part of tag name)
-                    // But we can have , } ] which indicate end of tagged empty node in flow context
-                    const next_ch = self.lexer.peek();
-                    if (!self.lexer.isEOF() and !Lexer.isWhitespace(next_ch)) {
-                        if (next_ch == '{' or next_ch == '[') {
-                            // Invalid: tag directly followed by flow collection start without whitespace
-                            // e.g., "!tag{}" or "!tag[]"
-                            // These characters cannot be part of a tag name
-                            return error.InvalidTag;
-                        }
                     }
                 }
                 
                 tag = self.lexer.input[start - 1..self.lexer.pos]; // Include the '!'
                 // Only skip spaces on the same line, not newlines
                 self.skipSpaces();
-                
-                // After a tag, validate what follows
-                // In block context, a comma directly after a tag is invalid
-                if (!self.in_flow_context and self.lexer.peek() == ',') {
-                    return error.InvalidTag;
-                }
             } else if (ch == '*') {
                 // Alias
                 
@@ -618,11 +589,6 @@ pub const Parser = struct {
             if (current_column < min_indent) return null;
             
             if (ch == '-' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\t' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
-                // If we have an anchor before a block sequence entry, it must be on a separate line
-                // Tags are allowed, but anchors are not
-                if (anchor != null) {
-                    return error.UnexpectedCharacter;
-                }
                 // std.debug.print("DEBUG: Starting block sequence at column {}, min_indent = {}\n", .{self.lexer.column, min_indent});
                 // Check if there's content on the same line after the '-'
                 // const save_pos = self.lexer.pos;
@@ -833,7 +799,7 @@ pub const Parser = struct {
         // not just the scalar content. For mapping values, this is the mapping key's indent + 1.
         const context_indent = if (self.mapping_context_indent) |indent| indent else initial_indent;
         
-        // std.debug.print("DEBUG: parsePlainScalar called, char='{c}' (0x{x}), pos={}, indent={}, in_flow={}\n", .{self.lexer.peek(), self.lexer.peek(), start_pos, initial_indent, self.in_flow_context});
+        // // std.debug.print("DEBUG: parsePlainScalar called, char='{c}' (0x{x}), pos={}, indent={}\n", .{self.lexer.peek(), self.lexer.peek(), start_pos, initial_indent});
         
         // First, consume the first line
         while (!self.lexer.isEOF()) {
@@ -882,23 +848,19 @@ pub const Parser = struct {
         
         
         // Now handle potential multi-line scalars
-        // In BLOCK_KEY contexts, plain scalars cannot span multiple lines
-        // In FLOW_KEY contexts, multiline is allowed (per YAML spec example 9.4)
-        // In flow contexts, multiline is allowed
+        // In key contexts (BLOCK_KEY or FLOW_KEY), plain scalars cannot span multiple lines
+        // In flow contexts, multiline is allowed except in key contexts
         // In block contexts, multiline is allowed except in key contexts
-        const allow_multiline = (self.context != .BLOCK_KEY) and 
+        const allow_multiline = !self.isInKeyContext() and 
                                 (self.isInFlowContext() or self.mapping_context_indent == null);
-        
-        // std.debug.print("DEBUG: allow_multiline={}, context={}, in_flow={}\n", .{allow_multiline, self.context, self.in_flow_context});
         
         // Special check for invalid multiline implicit keys even when multiline is not allowed
         // This catches cases like HU3P where a plain scalar in a block mapping value
         // would contain mapping indicators on continuation lines
         // But don't apply this check when parsing inside block sequence entries (like JQ4R)
-        // Also don't apply in flow contexts where different rules apply
         if (!allow_multiline and !self.lexer.isEOF() and Lexer.isLineBreak(self.lexer.peek()) and 
             self.mapping_context_indent != null and !self.parsing_explicit_key and 
-            !self.parsing_block_sequence_entry and !self.isInFlowContext()) {
+            !self.parsing_block_sequence_entry) {
             
             var temp_pos = self.lexer.pos;
             temp_pos += 1; // Skip line break
@@ -1100,22 +1062,11 @@ pub const Parser = struct {
                 }
                 
                 
-                // For continuation in block context, line must be more indented than the mapping context
-                // In flow context, continuation is allowed at any indentation as long as it's not a flow indicator
-                if (!self.in_flow_context and new_indent <= context_indent) {
+                // For continuation, line must be more indented than the mapping context
+                if (new_indent <= context_indent) {
                     // Not a continuation - restore position to before line break
                     self.lexer.pos = line_break_pos;
                     break;
-                }
-                
-                // In flow context, check if the line starts with a flow indicator that would end the scalar
-                if (self.in_flow_context) {
-                    const ch = self.lexer.peek();
-                    if (Lexer.isFlowIndicator(ch)) {
-                        // Flow indicator ends the scalar - restore position to before line break
-                        self.lexer.pos = line_break_pos;
-                        break;
-                    }
                 }
                 
                 // If a comment interrupted the previous line, continuation is invalid
@@ -1125,8 +1076,8 @@ pub const Parser = struct {
                 
                 // Check if this continuation line contains a mapping indicator that would
                 // make this an invalid multi-line implicit key
-                // Skip this check when parsing explicit keys or in flow context, as they have different rules
-                if (!self.parsing_explicit_key and !self.in_flow_context) {
+                // Skip this check when parsing explicit keys, as they have different rules
+                if (!self.parsing_explicit_key) {
                     var check_pos = self.lexer.pos;
                     while (check_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[check_pos])) {
                         if (self.lexer.input[check_pos] == ':' and
@@ -1150,27 +1101,8 @@ pub const Parser = struct {
                 // This line is part of the scalar - consume it
                 
                 // Now consume the line
-                var flow_indicator_found = false;
                 while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
                     const ch = self.lexer.peek();
-                    
-                    // In flow context, check for ':' that ends the scalar
-                    if (self.in_flow_context and ch == ':') {
-                        const next = self.lexer.peekNext();
-                        if (Lexer.isWhitespace(next) or Lexer.isLineBreak(next) or next == 0 or Lexer.isFlowIndicator(next)) {
-                            // ':' ends the scalar in flow context
-                            break;
-                        }
-                    }
-                    
-                    // In flow context, flow indicators end the scalar
-                    if (self.isInFlowContext() and Lexer.isFlowIndicator(ch)) {
-                        // Restore position to before the line break that started this continuation
-                        self.lexer.pos = line_break_pos;
-                        flow_indicator_found = true;
-                        break;
-                    }
-                    
                     if (ch == '#' and self.lexer.input[self.lexer.pos - 1] == ' ') {
                         comment_interrupted_previous_line = true;
                         // Skip to end of line
@@ -1211,11 +1143,6 @@ pub const Parser = struct {
                         end_pos = self.lexer.pos;
                     }
                 }
-                
-                // If we found a flow indicator, break out of the multiline loop
-                if (flow_indicator_found) {
-                    break;
-                }
             }
         }
         
@@ -1250,8 +1177,6 @@ pub const Parser = struct {
         } else if (std.mem.eql(u8, value, ".nan") or std.mem.eql(u8, value, ".NaN") or std.mem.eql(u8, value, ".NAN")) {
             value = ".nan";
         }
-        
-        // std.debug.print("DEBUG: parsePlainScalar done, value='{s}', final_pos={}\n", .{value, self.lexer.pos});
         
         const node = try self.arena.allocator().create(ast.Node);
         node.* = .{
@@ -1323,13 +1248,13 @@ pub const Parser = struct {
                 const start_line = self.lexer.line;
                 const item = try self.parseValue(0);
                 if (item) |value| {
+                    const end_line_before_skip = self.lexer.line;
                     try self.skipWhitespaceAndCommentsInFlow();
                     
                     // Check if this is a mapping key
                     if (self.lexer.peek() == ':') {
-                        // Check if the colon is on a different line than where the key started
-                        // (invalid for implicit keys in flow context)
-                        if (self.lexer.line != start_line) {
+                        // Check if the key spans multiple lines (invalid for implicit keys in flow context)
+                        if (end_line_before_skip != start_line) {
                             return error.InvalidMultilineKey;
                         }
                         
@@ -1447,17 +1372,15 @@ pub const Parser = struct {
                 return error.ExpectedColonOrComma;
             }
             
-            // std.debug.print("Debug: After parsing value, pos={}, char='{}' (0x{x})\n", .{self.lexer.pos, self.lexer.peek(), self.lexer.peek()});
+            // // std.debug.print("Debug: After parsing value, pos={}, char='{}' (0x{x})\n", .{self.lexer.pos, self.lexer.peek(), self.lexer.peek()});
             
             try node.data.mapping.pairs.append(.{ .key = key.?, .value = value });
             
             try self.skipWhitespaceAndCommentsInFlow();
             
-            // std.debug.print("Debug: After skip whitespace, pos={}, char='{}' (0x{x})\n", .{self.lexer.pos, self.lexer.peek(), self.lexer.peek()});
-            
             // Check if we've reached the end of the mapping
             if (self.lexer.peek() == '}') {
-                // std.debug.print("Debug: Found closing brace, breaking\n", .{});
+                // // std.debug.print("Debug: Found closing brace, breaking\n", .{});
                 break;
             }
             
@@ -1466,45 +1389,15 @@ pub const Parser = struct {
                 try self.skipWhitespaceAndCommentsInFlow();
             } else {
                 // No comma and not closing brace - error
-                // std.debug.print("Debug: Expected comma or brace, but found '{}' (0x{x}) at pos {}\n", .{self.lexer.peek(), self.lexer.peek(), self.lexer.pos});
                 return error.ExpectedCommaOrBrace;
             }
         }
         
         if (self.lexer.peek() == '}') {
             self.lexer.advanceChar();
-            
-            // After closing a flow mapping, check for invalid content on the same line
-            // when we entered from block context (saved_flow_context == false)
-            if (!saved_flow_context) {
-                // We're parsing a flow mapping in block context
-                // Check for invalid content after the closing brace
-                const saved_pos = self.lexer.pos;
-                self.skipSpaces();
-                
-                if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
-                    const ch = self.lexer.peek();
-                    if (ch == '#') {
-                        // Comment is allowed with space, but not immediately after brace
-                        if (saved_pos == self.lexer.pos) {
-                            return error.InvalidComment;
-                        }
-                        // Comment with space is OK
-                        self.lexer.pos = saved_pos;
-                    } else {
-                        // Any other content after flow mapping close in block context is invalid
-                        // This catches cases like "{ y: z }- invalid"
-                        return error.InvalidContent;
-                    }
-                } else {
-                    // At EOL/EOF, restore position
-                    self.lexer.pos = saved_pos;
-                }
-            } else {
-                // In flow context, just check for immediate comment (original behavior)
-                if (!self.lexer.isEOF() and self.lexer.peek() == '#') {
-                    return error.InvalidComment;
-                }
+            // Check for comment immediately after closing brace
+            if (!self.lexer.isEOF() and self.lexer.peek() == '#') {
+                return error.InvalidComment;
             }
         } else {
             return error.ExpectedCloseBrace;
@@ -2129,23 +2022,14 @@ pub const Parser = struct {
         self.lexer.advanceChar(); // Skip opening quote
         
         var result = std.ArrayList(u8).init(self.arena.allocator());
-        var at_line_start = false;
         
         while (!self.lexer.isEOF()) {
             const ch = self.lexer.peek();
-            
-            // Check for document markers at the beginning of a line
-            if (at_line_start and (self.lexer.match("...") or self.lexer.match("---"))) {
-                // This is a document marker, not part of the string
-                // The string is unterminated
-                return error.UnterminatedQuotedString;
-            }
             
             if (ch == '\'') {
                 if (self.lexer.peekNext() == '\'') {
                     try result.append('\'');
                     self.lexer.advance(2);
-                    at_line_start = false;
                 } else {
                     self.lexer.advanceChar();
                     break;
@@ -2153,8 +2037,6 @@ pub const Parser = struct {
             } else {
                 try result.append(ch);
                 self.lexer.advanceChar();
-                // Track if we're at the start of a new line
-                at_line_start = (ch == '\n' or ch == '\r');
             }
         }
         
@@ -3294,7 +3176,6 @@ pub const Parser = struct {
             
             // Reset document content flag for each document
             self.has_document_content = false;
-            self.has_yaml_directive = false;
             
             // Clear anchors and tag handles for each document
             self.anchors.clearRetainingCapacity();
@@ -3321,10 +3202,6 @@ pub const Parser = struct {
                 if (self.lexer.peek() == '%') {
                     // If we've already parsed content in this document, directives are not allowed
                     if (self.has_document_content) {
-                        return error.DirectiveAfterContent;
-                    }
-                    // Directives must appear before document start marker
-                    if (has_explicit_start) {
                         return error.DirectiveAfterContent;
                     }
                     has_directives = true;
