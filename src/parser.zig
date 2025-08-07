@@ -1511,6 +1511,21 @@ pub const Parser = struct {
                     return error.InvalidComment;
                 }
             }
+            // Check for invalid content immediately after closing brace
+            // The pattern "{ y: z }in: valid" is invalid (plain scalar after flow mapping)
+            // But "{ y: z }: value" is valid (flow mapping as a key)
+            // We need to check if what follows is a plain scalar that forms invalid syntax
+            if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
+                const ch = self.lexer.peek();
+                // If it's alphanumeric or certain special chars, it's starting a plain scalar
+                // which is invalid right after a flow mapping
+                if ((ch >= 'a' and ch <= 'z') or (ch >= 'A' and ch <= 'Z') or
+                    (ch >= '0' and ch <= '9') or ch == '_' or ch == '-' or ch == '.') {
+                    // This looks like the start of a plain scalar immediately after }
+                    // which would be invalid (like }word or }123)
+                    return error.InvalidValueAfterMapping;
+                }
+            }
         } else {
             return error.ExpectedCloseBrace;
         }
@@ -2137,6 +2152,54 @@ pub const Parser = struct {
                             i += 1;
                         }
                     }
+                    
+                    // After parsing a flow collection (mapping or sequence), check for invalid content
+                    // The pattern "x: { y: z }in: valid" is invalid - content after flow mapping must be properly separated
+                    if (value != null and (value.?.type == .mapping or value.?.type == .sequence)) {
+                        // We just parsed a flow collection, check what comes after
+                        // First save position and skip spaces to see what's next
+                        const check_pos = self.lexer.pos;
+                        self.skipSpaces();
+                        
+                        if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and self.lexer.peek() != '#') {
+                            // There's content after the flow collection on the same line
+                            // Check if it looks like a mapping key (plain scalar followed by colon)
+                            if (self.isPlainScalarStart(self.lexer.peek())) {
+                                // Look ahead to see if this forms a mapping pattern
+                                var scan_pos = self.lexer.pos;
+                                while (scan_pos < self.lexer.input.len and 
+                                       !Lexer.isLineBreak(self.lexer.input[scan_pos]) and
+                                       self.lexer.input[scan_pos] != '#' and
+                                       self.lexer.input[scan_pos] != ' ' and
+                                       self.lexer.input[scan_pos] != '\t') {
+                                    scan_pos += 1;
+                                }
+                                // Check if we found a colon after the plain scalar
+                                if (scan_pos < self.lexer.input.len and self.lexer.input[scan_pos] == ':') {
+                                    // This looks like "{ y: z }key:" which is invalid
+                                    return error.InvalidValueAfterMapping;
+                                }
+                                // Also check with spaces: look for pattern like "in: valid"
+                                while (scan_pos < self.lexer.input.len and 
+                                       !Lexer.isLineBreak(self.lexer.input[scan_pos])) {
+                                    if (self.lexer.input[scan_pos] == ':' and
+                                        scan_pos + 1 < self.lexer.input.len and
+                                        (self.lexer.input[scan_pos + 1] == ' ' or 
+                                         self.lexer.input[scan_pos + 1] == '\t' or
+                                         Lexer.isLineBreak(self.lexer.input[scan_pos + 1]) or
+                                         scan_pos + 1 == self.lexer.input.len)) {
+                                        // Found mapping pattern after flow collection
+                                        return error.InvalidValueAfterMapping;
+                                    }
+                                    scan_pos += 1;
+                                }
+                            }
+                        }
+                        
+                        // Restore original position
+                        self.lexer.pos = check_pos;
+                    }
+                    
                 }
                 
                 if (value == null) {
