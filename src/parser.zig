@@ -3704,6 +3704,10 @@ pub const Parser = struct {
                 } else {
                     // Parse document content
                     self.has_document_content = true;
+                    
+                    // Save position to check what we're parsing
+                    const pre_parse_pos = self.lexer.pos;
+                    
                     document.root = try self.parseValue(0);
                     
                     // After parsing the root value, check for unexpected content
@@ -3715,9 +3719,27 @@ pub const Parser = struct {
                         if (ch == ']' or ch == '}') {
                             return error.UnexpectedCharacter;
                         }
-                        // For sequence documents, disallow additional content that starts
-                        // at column 0 without a '-' indicator (BD7L case)
+                        
+                        // After a complete document (especially flow collections), 
+                        // any additional non-whitespace content is invalid
+                        // This catches cases like KS4U: "[item]\ninvalid item"
+                        // where content appears after a complete flow sequence
+                        // BUT we need to allow flow collections as mapping keys like "[key]: value"
+                        
+                        // Check if what we parsed was a flow collection at the root level
+                        // and whether it's followed by a colon (making it a mapping key)
+                        const starts_with_flow = pre_parse_pos < self.lexer.input.len and
+                            (self.lexer.input[pre_parse_pos] == '[' or self.lexer.input[pre_parse_pos] == '{');
+                        
+                        if (starts_with_flow and ch != ':') {
+                            // Flow collection at root not followed by colon means 
+                            // any additional content is invalid
+                            return error.InvalidContentAfterDocumentEnd;
+                        }
+                        
                         if (document.root) |root_node| {
+                            
+                            // Original check for sequences with content at column 0
                             if (root_node.type == .sequence) {
                                 var idx = self.lexer.pos;
                                 const len = self.lexer.input.len;
