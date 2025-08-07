@@ -3297,6 +3297,7 @@ pub const Parser = struct {
             
             // Parse directives and content
             var has_directives = false;
+            var has_yaml_directive_in_doc = false;
             while (!self.lexer.isEOF() and !self.isAtDocumentMarker()) {
                 // std.debug.print("RHX7 DEBUG: char='{}' ({}), has_content={}\n", .{self.lexer.peek(), self.lexer.peek(), self.has_document_content});
                 // Check for directives
@@ -3305,7 +3306,13 @@ pub const Parser = struct {
                     if (self.has_document_content) {
                         return error.DirectiveAfterContent;
                     }
+                    // Directives must appear before document start marker
+                    if (has_explicit_start) {
+                        return error.DirectiveAfterContent;
+                    }
                     has_directives = true;
+                    
+                    // Parse the directive properly
                     self.lexer.advanceChar(); // Skip '%'
                     
                     // Parse directive name
@@ -3316,10 +3323,11 @@ pub const Parser = struct {
                     const directive_name = self.lexer.input[directive_start..self.lexer.pos];
                     
                     if (std.mem.eql(u8, directive_name, "YAML")) {
-                        if (self.has_yaml_directive) {
+                        // Check for duplicate YAML directive
+                        if (has_yaml_directive_in_doc) {
                             return error.DuplicateYamlDirective;
                         }
-                        self.has_yaml_directive = true;
+                        has_yaml_directive_in_doc = true;
                         
                         // Skip whitespace and parse version
                         while (!self.lexer.isEOF() and Lexer.isWhitespace(self.lexer.peek())) {
@@ -3333,18 +3341,7 @@ pub const Parser = struct {
                         
                         // Check for comment without preceding whitespace
                         if (self.lexer.peek() == '#') {
-                            // Comments must be preceded by whitespace
-                            return error.InvalidDirective;
-                        }
-                        
-                        // Skip any trailing whitespace before comment or line end
-                        while (!self.lexer.isEOF() and Lexer.isWhitespace(self.lexer.peek())) {
-                            self.lexer.advanceChar();
-                        }
-                        
-                        // Check for extra content after version (should only be comment or line end)
-                        if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and self.lexer.peek() != '#') {
-                            // Extra content after YAML version - error
+                            // Comments must be preceded by whitespace after version
                             return error.InvalidDirective;
                         }
                         
@@ -3354,48 +3351,14 @@ pub const Parser = struct {
                         if (!std.mem.eql(u8, version, "1.1") and !std.mem.eql(u8, version, "1.2")) {
                             return error.UnsupportedYamlVersion;
                         }
-                    } else if (std.mem.eql(u8, directive_name, "TAG")) {
-                        // Parse TAG directive
-                        // Skip whitespace to tag handle
-                        while (!self.lexer.isEOF() and Lexer.isWhitespace(self.lexer.peek())) {
-                            self.lexer.advanceChar();
-                        }
                         
-                        // Parse tag handle (e.g., !e!)
-                        const handle_start = self.lexer.pos;
-                        if (self.lexer.peek() == '!') {
-                            self.lexer.advanceChar(); // First !
-                            // Parse handle characters
-                            while (!self.lexer.isEOF() and !Lexer.isWhitespace(self.lexer.peek()) and self.lexer.peek() != '!') {
-                                self.lexer.advanceChar();
-                            }
-                            if (self.lexer.peek() == '!') {
-                                self.lexer.advanceChar(); // Closing !
-                            }
-                        }
-                        const handle = self.lexer.input[handle_start..self.lexer.pos];
-                        
-                        // Skip whitespace to prefix
-                        while (!self.lexer.isEOF() and Lexer.isWhitespace(self.lexer.peek())) {
-                            self.lexer.advanceChar();
-                        }
-                        
-                        // Parse tag prefix (URI)
-                        const prefix_start = self.lexer.pos;
-                        while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and !Lexer.isWhitespace(self.lexer.peek()) and self.lexer.peek() != '#') {
-                            self.lexer.advanceChar();
-                        }
-                        const prefix = self.lexer.input[prefix_start..self.lexer.pos];
-                        
-                        // Store the tag handle mapping
-                        try self.tag_handles.put(handle, prefix);
+                        // Skip any remaining content on the line (comments etc)
+                        self.lexer.skipToEndOfLine();
                     } else {
-                        // Unknown directive - skip it with a warning (not an error)
+                        // For other directives (TAG, unknown), just skip to end of line
                         self.lexer.skipToEndOfLine();
                     }
                     
-                    // Skip to end of line
-                    self.lexer.skipToEndOfLine();
                     _ = self.lexer.skipLineBreak();
                     self.skipWhitespaceAndComments();
                 } else {
