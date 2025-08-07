@@ -3813,3 +3813,20 @@ pub fn parse(input: []const u8) ParseError!ast.Document {
         };
     }
 }
+
+test "parser handles CR line endings" {
+    const input = "key1: value1\rkey2: value2\r";
+    var doc = try parse(input);
+    defer doc.deinit();
+    try std.testing.expect(doc.root != null);
+    const root = doc.root.?;
+    try std.testing.expect(root.type == .mapping);
+    const map = root.data.mapping;
+    try std.testing.expectEqual(@as(usize, 2), map.pairs.items.len);
+    try std.testing.expectEqualStrings("key1", map.pairs.items[0].key.data.scalar.value);
+    try std.testing.expectEqualStrings("value1", map.pairs.items[0].value.data.scalar.value);
+    try std.testing.expectEqualStrings("key2", map.pairs.items[1].key.data.scalar.value);
+    try std.testing.expectEqualStrings("value2", map.pairs.items[1].value.data.scalar.value);
+}
+
+

@@ -81,6 +81,41 @@ Successfully fixed 40+ tests in recent commits:
 
 ## Testing
 
+### Unit Tests
+
+The project includes unit tests that validate parser behavior across multiple implementations:
+
+```bash
+# Run all unit tests (includes cross-parser validation)
+./zig/zig build test
+
+# Run unit tests directly to see test names
+./zig/zig test src/parser_tests.zig
+
+# Run with filter to match specific tests
+./zig/zig test src/parser_tests.zig --test-filter "parser:"
+```
+
+#### Understanding Unit Test Output
+
+- Tests validate against Zig, TypeScript, and Rust parsers
+- When parsers disagree, you'll see notes like:
+  ```
+  Note: TypeScript parser disagrees (got true, expected false)
+  Note: Rust parser disagrees (got false, expected true)
+  ```
+- These notes help identify spec ambiguities where parsers have made different choices
+- Tests document actual behavior, not necessarily "correct" behavior
+
+#### Unit Test Structure
+
+- Test files follow pattern: `<module>_tests.zig` (e.g., `parser_tests.zig`)
+- Each test validates behavior across all three parsers
+- Helper functions `testTypescriptParser()` and `testRustParser()` invoke external parsers
+- Tests only fail if the Zig parser doesn't match expected behavior
+
+### YAML Test Suite
+
 ```bash
 # Run full test suite
 ./zig/zig build test-yaml -- zig

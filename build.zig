@@ -107,12 +107,46 @@ pub fn build(b: *std.Build) void {
 
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 
+    // Add tests for individual source files
+    const parser_tests = b.addTest(.{
+        .root_source_file = b.path("src/parser.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const run_parser_tests = b.addRunArtifact(parser_tests);
+    
+    // Add comprehensive parser tests that validate against multiple parsers
+    const parser_validation_tests = b.addTest(.{
+        .root_source_file = b.path("src/parser_tests.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const run_parser_validation_tests = b.addRunArtifact(parser_validation_tests);
+
+    const lexer_tests = b.addTest(.{
+        .root_source_file = b.path("src/lexer.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const run_lexer_tests = b.addRunArtifact(lexer_tests);
+
+    const ast_tests = b.addTest(.{
+        .root_source_file = b.path("src/ast.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const run_ast_tests = b.addRunArtifact(ast_tests);
+
     // Similar to creating the run step earlier, this exposes a `test` step to
     // the `zig build --help` menu, providing a way for the user to request
     // running the unit tests.
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
     test_step.dependOn(&run_exe_unit_tests.step);
+    test_step.dependOn(&run_parser_tests.step);
+    test_step.dependOn(&run_parser_validation_tests.step);
+    test_step.dependOn(&run_lexer_tests.step);
+    test_step.dependOn(&run_ast_tests.step);
     
     // Add YAML test runner
     const test_runner = b.addExecutable(.{
