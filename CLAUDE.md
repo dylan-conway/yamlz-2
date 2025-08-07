@@ -115,9 +115,8 @@ The project includes unit tests that validate parser behavior across multiple im
 - Tests only fail if the Zig parser doesn't match expected behavior
 
 ### YAML Test Suite
-
 ```bash
-# Run full test suite
+# Run full YAML test suite
 ./zig/zig build test-yaml -- zig
 
 # Verbose mode to see specific failures
@@ -136,16 +135,18 @@ The project includes unit tests that validate parser behavior across multiple im
 ### Automated Testing
 The project has GitHub Actions workflow (`.github/workflows/test-zig-parser.yml`) that:
 - Runs on all PRs and pushes to main
-- Executes full test suite
-- Posts results as PR comments with pass/fail status
+- Executes both unit tests and YAML test suite
+- Posts results as PR comments with pass/fail status for both test types
 - Tracks test improvements/regressions against baseline (currently 397)
 - Fails CI if tests drop below baseline threshold
 
 ### PR Comment Features
-- Shows current passing/failing counts
-- Compares against baseline to detect regressions
+- Two distinct sections: Unit Tests and YAML Test Suite
+- Shows current passing/failing counts for each
+- Compares YAML suite against baseline to detect regressions
 - Lists specific failing test names
 - Updates existing comment instead of creating duplicates
+- Clear visual indicators (✅, ⚠️, ❌) for overall status
 
 ## Strategy for Agents
 
