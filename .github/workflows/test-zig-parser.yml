@@ -4,13 +4,15 @@ on:
   pull_request:
     branches: [ main ]
     paths:
-      - 'zig/**'
+      - 'src/**'
+      - 'build.zig'
       - 'test_runner.py'
       - '.github/workflows/test-zig-parser.yml'
   push:
     branches: [ main ]
     paths:
-      - 'zig/**'
+      - 'src/**'
+      - 'build.zig'
       - 'test_runner.py'
       - '.github/workflows/test-zig-parser.yml'
 
@@ -41,17 +43,16 @@ jobs:
     
     - name: Build Zig parser
       run: |
-        cd zig
         zig build
     
     - name: Run YAML test suite
       run: |
-        ./zig/zig build test-yaml -- zig
+        zig build test-yaml -- zig
     
     - name: Generate test report
       if: always()
       run: |
-        ./zig/zig build test-yaml -- zig --verbose > test-results.txt 2>&1
+        zig build test-yaml -- zig --verbose > test-results.txt 2>&1
         echo "## YAML Test Suite Results" >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
         tail -20 test-results.txt >> $GITHUB_STEP_SUMMARY
