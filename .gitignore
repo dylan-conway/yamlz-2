@@ -5,4 +5,10 @@ zig
 worktrees/
 yaml-rs-test/target
 yaml-rs-test/yaml-rs-test
+.tmp/# Test files
+test*.yaml
+test_*.zig
+node_modules/
+package.json
+pnpm-lock.yaml
 .tmp/
