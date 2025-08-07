@@ -113,7 +113,7 @@ fn runTypescriptParser(allocator: std.mem.Allocator, yaml_input: []const u8) !bo
     const result = try std.process.Child.run(.{
         .allocator = allocator,
         .argv = &[_][]const u8{
-            "node",
+            "bun",
             "-e",
             \\const fs = require('fs');
             \\const yaml = require('./yaml-ts/dist/index.js');
