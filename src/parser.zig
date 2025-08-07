@@ -834,7 +834,7 @@ pub const Parser = struct {
                 var resolved_tag = t;
                 
                 // Check if this is a shorthand tag that needs resolution
-                if (t.len > 1 and t[0] == '!') {
+                if (t.len > 1 and t[0] == '!' and t[1] != '<') {
                     // Find the end of the handle (second !)
                     var handle_end: usize = 1;
                     while (handle_end < t.len and t[handle_end] != '!') : (handle_end += 1) {}
@@ -850,6 +850,9 @@ pub const Parser = struct {
                             try tag_buffer.appendSlice(prefix);
                             try tag_buffer.appendSlice(suffix);
                             resolved_tag = tag_buffer.items;
+                        } else if (!std.mem.eql(u8, handle, "!") and !std.mem.eql(u8, handle, "!!")) {
+                            // Unknown tag handle
+                            return error.InvalidTag;
                         }
                     }
                 }
@@ -3670,6 +3673,23 @@ pub const Parser = struct {
                     }
                     
                     break; // Only parse one value per document
+                }
+            }
+
+            // Handle directives followed immediately by an explicit document start (e.g. %TAG ... \n ---)
+            if (!self.has_document_content and self.lexer.match("---")) {
+                try self.skipDocumentSeparator();
+                self.skipWhitespaceAndComments();
+                self.has_document_content = true;
+                document.root = try self.parseValue(0);
+
+                // After parsing the root value, check for unexpected content
+                self.skipWhitespaceAndComments();
+                if (!self.lexer.isEOF() and !self.isAtDocumentMarker()) {
+                    const ch = self.lexer.peek();
+                    if (ch == ']' or ch == '}') {
+                        return error.UnexpectedCharacter;
+                    }
                 }
             }
             
