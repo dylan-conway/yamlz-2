@@ -2,6 +2,7 @@ const std = @import("std");
 const Lexer = @import("lexer.zig").Lexer;
 const ast = @import("ast.zig");
 
+// YAML 1.2 parser implementation
 // YAML parser context states as defined in the spec
 pub const Context = enum {
     BLOCK_IN,   // inside block context
