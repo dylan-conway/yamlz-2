@@ -5,3 +5,4 @@ zig
 worktrees/
 yaml-rs-test/target
 yaml-rs-test/yaml-rs-test
+.tmp/
