@@ -105,7 +105,7 @@ jobs:
             }
           }
           
-          let comment = `## ${statusEmoji} YAML Test Suite Results
+          let commentBody = `## ${statusEmoji} YAML Test Suite Results
           
           ${statusText}
           
@@ -115,19 +115,44 @@ jobs:
           - **Baseline**: ${baseline} passing`;
           
           if (improvement > 0) {
-            comment += `\n- **Improvement**: +${improvement} tests now passing! 🎉`;
+            commentBody += `\n- **Improvement**: +${improvement} tests now passing! 🎉`;
           }
           
           if (failingTests.trim()) {
-            comment += `\n\n### Failing Tests\n${failingTests}`;
+            commentBody += `\n\n### Failing Tests\n${failingTests}`;
           }
           
-          github.rest.issues.createComment({
-            issue_number: context.issue.number,
+          // Add a hidden marker to identify our bot comments
+          commentBody += '\n\n<!-- yaml-test-suite-results -->';
+          
+          // Find existing comment
+          const { data: comments } = await github.rest.issues.listComments({
             owner: context.repo.owner,
             repo: context.repo.repo,
-            body: comment
+            issue_number: context.issue.number
           });
+          
+          const botComment = comments.find(comment => 
+            comment.body.includes('<!-- yaml-test-suite-results -->')
+          );
+          
+          if (botComment) {
+            // Update existing comment
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: botComment.id,
+              body: commentBody
+            });
+          } else {
+            // Create new comment
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: commentBody
+            });
+          }
     
     - name: Check test threshold
       run: |
