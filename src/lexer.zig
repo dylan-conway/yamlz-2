@@ -29,14 +29,24 @@ pub const Lexer = struct {
     pub fn advance(self: *Lexer, count: usize) void {
         var i: usize = 0;
         while (i < count and self.pos < self.input.len) : (i += 1) {
-            if (self.input[self.pos] == '\n') {
+            const ch = self.input[self.pos];
+            if (ch == '\n') {
                 self.line += 1;
                 self.column = 1;
-                self.line_start = self.pos + 1;
+                self.pos += 1;
+                self.line_start = self.pos;
+            } else if (ch == '\r') {
+                self.line += 1;
+                self.column = 1;
+                self.pos += 1;
+                if (self.pos < self.input.len and self.input[self.pos] == '\n') {
+                    self.pos += 1;
+                }
+                self.line_start = self.pos;
             } else {
                 self.column += 1;
+                self.pos += 1;
             }
-            self.pos += 1;
         }
     }
     
@@ -82,13 +92,7 @@ pub const Lexer = struct {
     
     pub fn skipLineBreak(self: *Lexer) bool {
         const ch = self.peek();
-        if (ch == '\r') {
-            self.advanceChar();
-            if (self.peek() == '\n') {
-                self.advanceChar();
-            }
-            return true;
-        } else if (ch == '\n') {
+        if (ch == '\r' or ch == '\n') {
             self.advanceChar();
             return true;
         }
