@@ -87,9 +87,9 @@ pub fn main() !void {
     std.debug.print("Passing: {} ({d:.1}%)\n", .{ passing_tests, percentage });
     std.debug.print("Failing: {}\n", .{total_tests - passing_tests});
     
-    if (failing_tests.items.len > 0 and failing_tests.items.len <= 10) {
-        std.debug.print("\nFirst failing tests:\n", .{});
-        for (failing_tests.items[0..@min(10, failing_tests.items.len)]) |name| {
+    if (failing_tests.items.len > 0) {
+        std.debug.print("\nFailing tests:\n", .{});
+        for (failing_tests.items) |name| {
             std.debug.print("  - {s}\n", .{name});
         }
     }

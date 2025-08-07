@@ -1714,7 +1714,7 @@ pub const Parser = struct {
             
             // Get current indent - needed by multiple code paths
             const current_indent = self.getCurrentIndent();
-            // std.debug.print("DEBUG parseBlockMapping: current_indent={}, min_indent={}, peek='{}'\n", .{current_indent, min_indent, self.lexer.peek()});
+            // std.debug.print("DEBUG parseBlockMapping: current_indent={}, min_indent={}, peek='{c}' ({}), pos={}, line={}\n", .{current_indent, min_indent, self.lexer.peek(), self.lexer.peek(), self.lexer.pos, self.lexer.line});
             
             var key: ?*ast.Node = null;
             
@@ -2028,11 +2028,13 @@ pub const Parser = struct {
                 try self.skipSpacesCheckTabs();
                 
                 var value: ?*ast.Node = null;
+                var value_start_line = self.lexer.line; // Track the line where value parsing starts
                 
                 if (Lexer.isLineBreak(self.lexer.peek()) or self.lexer.isEOF()) {
                     self.skipToNextLine();
                     const value_indent = self.getCurrentIndent();
                     if (value_indent > current_indent) {
+                        value_start_line = self.lexer.line; // Update to the actual line where value starts
                         value = try self.parseValue(value_indent);
                     } else if (value_indent == current_indent and current_indent == 0) {
                         // Check if we have an anchor at zero indentation followed by a sequence
@@ -2090,18 +2092,26 @@ pub const Parser = struct {
                     // but the current parser treats it as a nested mapping, which is incorrect
                     const saved_context = self.in_flow_context;
                     self.in_flow_context = true; // Force flow context to prevent block mapping detection
+                    value_start_line = self.lexer.line; // Remember the line where the value starts
                     value = try self.parseValue(current_indent);
                     self.in_flow_context = saved_context;
                     
                     // After parsing any value in a mapping, check for invalid nested mapping syntax
                     // like "a: 'b': c" or "a: b: c: d" which should be errors
-                    const saved_pos = self.lexer.pos;
-                    self.skipSpaces(); // Skip spaces but not newlines
-                    
-                    // If we find a ':' immediately after the value on the same line,
-                    // this creates invalid nested mapping syntax
-                    if (self.lexer.peek() == ':' and !Lexer.isLineBreak(self.lexer.peekAt(self.lexer.pos - 1))) {
-                        return error.InvalidNestedMapping;
+                    // But only if we're still on the same line as where the value started
+                    if (self.lexer.line == value_start_line) {
+                        const saved_pos = self.lexer.pos;
+                        self.skipSpaces(); // Skip spaces but not newlines
+                        
+                        // If we find a ':' immediately after the value on the same line,
+                        // this creates invalid nested mapping syntax
+                        if (self.lexer.peek() == ':') {
+                            // Since skipSpaces() doesn't skip newlines, and we're still on the same line,
+                            // this colon is part of invalid nested mapping syntax
+                            return error.InvalidNestedMapping;
+                        }
+                        
+                        self.lexer.pos = saved_pos; // Restore position for further processing
                     }
                     
                     // Additionally, check if the value itself contains invalid mapping patterns
@@ -2122,8 +2132,6 @@ pub const Parser = struct {
                             i += 1;
                         }
                     }
-                    
-                    self.lexer.pos = saved_pos;
                 }
                 
                 if (value == null) {
@@ -2135,17 +2143,22 @@ pub const Parser = struct {
                 
                 // Before skipping to the next line, validate that there's no invalid content remaining on the current line
                 // This catches cases like "a: b: c: d" where ": c: d" would be invalid remaining content
-                const saved_pos = self.lexer.pos;
-                self.skipSpaces(); // Skip any spaces but not newlines
-                
-                // Check if there's any non-whitespace, non-comment content remaining on the line
-                if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and self.lexer.peek() != '#') {
-                    // There's unexpected content on the line - check if it looks like invalid mapping syntax
-                    if (self.lexer.peek() == ':') {
-                        return error.InvalidNestedMapping;
+                // But only check this if we're still on the same line where we started parsing the value
+                if (self.lexer.line == value_start_line) {
+                    const saved_pos = self.lexer.pos;
+                    self.skipSpaces(); // Skip any spaces but not newlines
+                    
+                    // Check if there's any non-whitespace, non-comment content remaining on the line
+                    if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and self.lexer.peek() != '#') {
+                        // There's unexpected content on the line - check if it looks like invalid mapping syntax
+                        if (self.lexer.peek() == ':') {
+                            return error.InvalidNestedMapping;
+                        }
+                        // For other unexpected content, restore position and let normal processing handle it
+                        self.lexer.pos = saved_pos;
+                    } else {
+                        self.lexer.pos = saved_pos; // Restore position if no unexpected content
                     }
-                    // For other unexpected content, restore position and let normal processing handle it
-                    self.lexer.pos = saved_pos;
                 }
                 
                 // Always skip to the next line after parsing a mapping pair
@@ -2600,7 +2613,7 @@ pub const Parser = struct {
         const ch = self.lexer.peek();
         
         // Flow collections and scalars
-        std.debug.print("DEBUG: About to check ch == '[', ch='{}' ({})\n", .{ch, ch});
+        // std.debug.print("DEBUG: About to check ch == '[', ch='{}' ({})\n", .{ch, ch});
         if (ch == '[') {
             // Record the starting line for multiline implicit key detection
             const start_line = self.lexer.line;
@@ -2608,7 +2621,7 @@ pub const Parser = struct {
             
             // After parsing the flow sequence, check if it's being used as a multiline implicit key
             // This is invalid according to YAML spec: implicit keys cannot span multiple lines
-            std.debug.print("DEBUG: Flow sequence parsed, start_line={}, current_line={}\n", .{start_line, self.lexer.line});
+            // std.debug.print("DEBUG: Flow sequence parsed, start_line={}, current_line={}\n", .{start_line, self.lexer.line});
             if (self.lexer.line != start_line) {
                 // The flow sequence spans multiple lines, check if it's followed by ':'
                 self.skipSpaces();
