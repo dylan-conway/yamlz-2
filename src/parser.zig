@@ -1930,6 +1930,72 @@ pub const Parser = struct {
                 // If this is not the first pair, check that it's at the same indent
                 if (mapping_indent) |map_indent| {
                     if (current_indent != map_indent) {
+                        // Check if this is a mapping key at wrong indentation
+                        // Only check if current_indent is close to map_indent (off by 1)
+                        // AND we're not in a flow context (which allows flexible indentation)
+                        // This catches inconsistent indentation within the same mapping level
+                        // Check if we're inside a flow context - if so, skip this check
+                        // Flow collections can have block content with flexible indentation
+                        var in_flow = false;
+                        for (self.context_stack.items) |ctx| {
+                            if (ctx == .FLOW_IN or ctx == .FLOW_KEY) {
+                                in_flow = true;
+                                break;
+                            }
+                        }
+                        
+                        // std.debug.print("DEBUG: current_indent={}, map_indent={}, in_flow={}\n", .{current_indent, map_indent, in_flow});
+                        if (current_indent == map_indent + 1 and !in_flow) {
+                            // Check if this looks like a simple mapping key at wrong indentation
+                            // This is specifically for the U44R case where we have simple keys like "key2:"
+                            // at inconsistent indentation within the same mapping
+                            
+                            const save_pos = self.lexer.pos;
+                            const save_line = self.lexer.line;
+                            const save_column = self.lexer.column;
+                            
+                            // Check if this looks like a simple mapping key:
+                            // - Starts with an identifier character (letter or underscore)
+                            // - Followed by identifier chars or spaces
+                            // - Then a colon
+                            const first_char = self.lexer.peek();
+                            if ((first_char >= 'a' and first_char <= 'z') or
+                                (first_char >= 'A' and first_char <= 'Z') or
+                                first_char == '_') {
+                                
+                                // Look for a colon to confirm this is a mapping key
+                                var found_colon = false;
+                                var chars_before_colon: usize = 0;
+                                while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek()) and 
+                                       chars_before_colon < 50) { // Reasonable limit for key length
+                                    if (self.lexer.peek() == ':') {
+                                        // Check if colon is followed by proper separator
+                                        if (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or 
+                                            self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0) {
+                                            found_colon = true;
+                                            break;
+                                        }
+                                    }
+                                    self.lexer.advanceChar();
+                                    chars_before_colon += 1;
+                                }
+                                
+                                // Restore position
+                                self.lexer.pos = save_pos;
+                                self.lexer.line = save_line;
+                                self.lexer.column = save_column;
+                                
+                                if (found_colon and chars_before_colon < 20) { // Simple keys are typically short
+                                    // This looks like a simple mapping key at wrong indentation
+                                    return error.WrongIndentation;
+                                }
+                            }
+                            
+                            // Restore position
+                            self.lexer.pos = save_pos;
+                            self.lexer.line = save_line;
+                            self.lexer.column = save_column;
+                        }
                         break;
                     }
                 } else {
