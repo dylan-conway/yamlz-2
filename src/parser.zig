@@ -893,10 +893,47 @@ pub const Parser = struct {
             if (ch == '#' and (self.lexer.pos == 0 or Lexer.isWhitespace(self.lexer.input[self.lexer.pos - 1]))) break;
             // In flow context, flow indicators end the scalar
             if (self.isInFlowContext() and Lexer.isFlowIndicator(ch)) break;
-            
+
             self.lexer.advanceChar();
             if (!Lexer.isWhitespace(ch)) {
                 end_pos = self.lexer.pos;
+            }
+        }
+
+        // BS4K: if a plain scalar at the document root is followed by a comment
+        // and then another non-indented line, this should be treated as an error.
+        if (self.context == .BLOCK_OUT and
+            self.lexer.peek() == '#' and
+            (self.lexer.pos == 0 or Lexer.isWhitespace(self.lexer.input[self.lexer.pos - 1])))
+        {
+            var lookahead = self.lexer.pos;
+            // Skip the comment text
+            while (lookahead < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[lookahead])) {
+                lookahead += 1;
+            }
+            // Skip the line break
+            if (lookahead < self.lexer.input.len and Lexer.isLineBreak(self.lexer.input[lookahead])) {
+                lookahead += 1;
+                if (lookahead <= self.lexer.input.len and self.lexer.input[lookahead - 1] == '\r' and lookahead < self.lexer.input.len and self.lexer.input[lookahead] == '\n') {
+                    lookahead += 1;
+                }
+            }
+            // Measure indent of the following line
+            var indent: usize = 0;
+            while (lookahead < self.lexer.input.len and self.lexer.input[lookahead] == ' ') {
+                indent += 1;
+                lookahead += 1;
+            }
+            if (indent == 0 and lookahead < self.lexer.input.len and
+                self.lexer.input[lookahead] != '#' and
+                !Lexer.isLineBreak(self.lexer.input[lookahead]))
+            {
+                const remaining = self.lexer.input[lookahead..];
+                if (!std.mem.startsWith(u8, remaining, "---") and
+                    !std.mem.startsWith(u8, remaining, "..."))
+                {
+                    return error.InvalidPlainScalar;
+                }
             }
         }
         
@@ -3704,7 +3741,7 @@ pub fn parse(input: []const u8) ParseError!ast.Document {
     
     // Use stream parsing to handle multi-document inputs properly
     const stream = try parser_ptr.parseStream();
-    
+
     // For backward compatibility, return the first document if available
     if (stream.documents.items.len > 0) {
         return stream.documents.items[0];
