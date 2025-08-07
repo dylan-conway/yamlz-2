@@ -2,6 +2,6 @@
 zig-out
 zig
 .old
-yaml-rs
-yaml-rs-test
 worktrees/
+yaml-rs-test/target
+yaml-rs-test/yaml-rs-test

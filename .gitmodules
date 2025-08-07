@@ -4,3 +4,6 @@
 [submodule "yaml-ts"]
 	path = yaml-ts
 	url = https://github.com/eemeli/yaml
+[submodule "yaml-rs"]
+	path = yaml-rs
+	url = https://github.com/chyh1990/yaml-rust
