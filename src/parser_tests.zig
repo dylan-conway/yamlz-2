@@ -143,3 +143,9 @@ test "parser: simple key-value mapping" {
 test "parser: nested mapping" {
     try validateWithAllParsers("parent:\n  child: value", false);
 }
+
+// Intentionally failing test to verify CI reporting
+test "parser: intentionally failing test for CI verification" {
+    // This should fail - we're expecting it to reject but it will accept
+    try validateWithAllParsers("valid: yaml", true);
+}
