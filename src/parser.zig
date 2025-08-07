@@ -848,10 +848,11 @@ pub const Parser = struct {
         
         
         // Now handle potential multi-line scalars
-        // In key contexts (BLOCK_KEY or FLOW_KEY), plain scalars cannot span multiple lines
-        // In flow contexts, multiline is allowed except in key contexts
+        // In BLOCK_KEY contexts, plain scalars cannot span multiple lines
+        // In FLOW_KEY contexts, multiline is allowed (per YAML spec example 9.4)
+        // In flow contexts, multiline is allowed
         // In block contexts, multiline is allowed except in key contexts
-        const allow_multiline = !self.isInKeyContext() and 
+        const allow_multiline = (self.context != .BLOCK_KEY) and 
                                 (self.isInFlowContext() or self.mapping_context_indent == null);
         
         // std.debug.print("DEBUG: allow_multiline={}, context={}, in_flow={}\n", .{allow_multiline, self.context, self.in_flow_context});
@@ -1065,11 +1066,22 @@ pub const Parser = struct {
                 }
                 
                 
-                // For continuation, line must be more indented than the mapping context
-                if (new_indent <= context_indent) {
+                // For continuation in block context, line must be more indented than the mapping context
+                // In flow context, continuation is allowed at any indentation as long as it's not a flow indicator
+                if (!self.in_flow_context and new_indent <= context_indent) {
                     // Not a continuation - restore position to before line break
                     self.lexer.pos = line_break_pos;
                     break;
+                }
+                
+                // In flow context, check if the line starts with a flow indicator that would end the scalar
+                if (self.in_flow_context) {
+                    const ch = self.lexer.peek();
+                    if (Lexer.isFlowIndicator(ch)) {
+                        // Flow indicator ends the scalar - restore position to before line break
+                        self.lexer.pos = line_break_pos;
+                        break;
+                    }
                 }
                 
                 // If a comment interrupted the previous line, continuation is invalid
@@ -1079,8 +1091,8 @@ pub const Parser = struct {
                 
                 // Check if this continuation line contains a mapping indicator that would
                 // make this an invalid multi-line implicit key
-                // Skip this check when parsing explicit keys, as they have different rules
-                if (!self.parsing_explicit_key) {
+                // Skip this check when parsing explicit keys or in flow context, as they have different rules
+                if (!self.parsing_explicit_key and !self.in_flow_context) {
                     var check_pos = self.lexer.pos;
                     while (check_pos < self.lexer.input.len and !Lexer.isLineBreak(self.lexer.input[check_pos])) {
                         if (self.lexer.input[check_pos] == ':' and
@@ -1107,6 +1119,15 @@ pub const Parser = struct {
                 var flow_indicator_found = false;
                 while (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
                     const ch = self.lexer.peek();
+                    
+                    // In flow context, check for ':' that ends the scalar
+                    if (self.in_flow_context and ch == ':') {
+                        const next = self.lexer.peekNext();
+                        if (Lexer.isWhitespace(next) or Lexer.isLineBreak(next) or next == 0 or Lexer.isFlowIndicator(next)) {
+                            // ':' ends the scalar in flow context
+                            break;
+                        }
+                    }
                     
                     // In flow context, flow indicators end the scalar
                     if (self.isInFlowContext() and Lexer.isFlowIndicator(ch)) {
