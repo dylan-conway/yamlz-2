@@ -324,6 +324,18 @@ pub const Parser = struct {
                         }
                         self.lexer.advanceChar();
                     }
+                    
+                    // After a tag, we cannot have { or [ directly attached (these would be part of tag name)
+                    // But we can have , } ] which indicate end of tagged empty node in flow context
+                    const next_ch = self.lexer.peek();
+                    if (!self.lexer.isEOF() and !Lexer.isWhitespace(next_ch)) {
+                        if (next_ch == '{' or next_ch == '[') {
+                            // Invalid: tag directly followed by flow collection start without whitespace
+                            // e.g., "!tag{}" or "!tag[]"
+                            // These characters cannot be part of a tag name
+                            return error.InvalidTag;
+                        }
+                    }
                 }
                 
                 tag = self.lexer.input[start - 1..self.lexer.pos]; // Include the '!'
