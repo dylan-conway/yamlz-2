@@ -63,11 +63,19 @@ jobs:
         tail -20 test-results.txt >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
         
-        # Extract pass/fail counts for PR comment
+        # Extract pass/fail counts and test lists for PR comment
         PASSING=$(grep "Passing:" test-results.txt | awk '{print $2, $3}')
         FAILING=$(grep "Failing:" test-results.txt | awk '{print $2}')
         echo "PASSING=$PASSING" >> $GITHUB_ENV
         echo "FAILING=$FAILING" >> $GITHUB_ENV
+        
+        # Extract failing test names
+        echo "FAILING_TESTS<<EOF" >> $GITHUB_ENV
+        grep "^  - " test-results.txt | head -20 >> $GITHUB_ENV
+        echo "EOF" >> $GITHUB_ENV
+        
+        # Get baseline passing tests (from main branch)
+        echo "BASELINE_PASSING=391" >> $GITHUB_ENV
     
     - name: Comment PR with results
       if: github.event_name == 'pull_request' && always()
@@ -76,13 +84,48 @@ jobs:
         script: |
           const passing = process.env.PASSING || 'N/A';
           const failing = process.env.FAILING || 'N/A';
+          const failingTests = process.env.FAILING_TESTS || '';
+          const baseline = parseInt(process.env.BASELINE_PASSING || '391');
+          const currentPassing = parseInt(passing.split(' ')[0]) || 0;
+          const improvement = currentPassing - baseline;
           
-          const comment = `### YAML Test Suite Results
+          let statusEmoji = '✅';
+          let statusText = 'All tests passing!';
           
+          if (failing !== '0' && failing !== 'N/A') {
+            if (currentPassing < baseline) {
+              statusEmoji = '❌';
+              statusText = `Regression detected! ${baseline - currentPassing} fewer tests passing than baseline.`;
+            } else if (currentPassing > baseline) {
+              statusEmoji = '🚀';
+              statusText = `Progress! ${improvement} more tests passing than baseline.`;
+            } else {
+              statusEmoji = '📊';
+              statusText = 'No change from baseline.';
+            }
+          }
+          
+          let comment = `## ${statusEmoji} YAML Test Suite Results
+          
+          ${statusText}
+          
+          ### Summary
           - **Passing**: ${passing}
           - **Failing**: ${failing}
+          - **Baseline**: ${baseline} passing`;
           
-          Run \`zig build test-yaml -- zig --verbose\` locally to see detailed results.`;
+          if (improvement > 0) {
+            comment += `\n- **Improvement**: +${improvement} tests now passing! 🎉`;
+          }
+          
+          if (failingTests.trim()) {
+            comment += `\n\n### Failing Tests\n\`\`\`\n${failingTests}\`\`\``;
+          }
+          
+          comment += `\n\n### Next Steps
+          - Run \`zig build test-yaml -- zig --verbose\` locally for detailed output
+          - Check individual test files in \`yaml-test-suite/\` directory
+          - Reference implementations: TypeScript (94.8%), Rust (83.8%)`;
           
           github.rest.issues.createComment({
             issue_number: context.issue.number,
