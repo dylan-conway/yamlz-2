@@ -619,11 +619,93 @@ pub const Parser = struct {
                     self.skipSpaces();
                     
                     if (self.lexer.peek() == ':' and (self.lexer.peekNext() == ' ' or self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or self.lexer.peekNext() == 0)) {
-                        self.lexer.pos = save_pos;
-                        self.lexer.line = save_line;
-                        self.lexer.column = save_column;
-                        self.arena.allocator().destroy(scalar);
-                        node = try self.parseBlockMapping(min_indent);
+                        // This is a mapping. If we have an anchor, it should be on the key
+                            if (anchor != null) {
+                                // Special case: anchor on mapping key
+                                // Apply the anchor to the key (scalar we just parsed)
+                                // std.debug.print("DEBUG: About to register anchor '{s}' with key node type {}\n", .{anchor.?, scalar.type});
+                                try self.anchors.put(anchor.?, scalar);
+                                scalar.anchor = anchor;
+                                // std.debug.print("DEBUG: Successfully registered anchor '{s}' on key\n", .{anchor.?});
+                                anchor = null; // Clear anchor so it doesn't get applied again
+  
+                                // Now parse the rest of the mapping
+                                self.lexer.advanceChar(); // Skip ':'
+                                self.skipSpaces();
+  
+                                // Parse the value
+                                var value: ?*ast.Node = null;
+                                if (Lexer.isLineBreak(self.lexer.peek()) or self.lexer.isEOF()) {
+                                    self.skipToNextLine();
+                                    const value_indent = self.getCurrentIndent();
+                                    if (value_indent > min_indent) {
+                                        value = try self.parseValue(value_indent);
+                                    }
+                                } else {
+                                    value = try self.parseValue(min_indent);
+                                }
+  
+                                if (value == null) {
+                                    value = try self.createNullNode();
+                                }
+  
+                                // Create the mapping node
+                                const mapping_node = try self.arena.allocator().create(ast.Node);
+                                mapping_node.* = .{
+                                    .type = .mapping,
+                                    .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.arena.allocator()) } },
+                                };
+                                try mapping_node.data.mapping.pairs.append(.{ .key = scalar, .value = value.? });
+  
+                                // Check if there are more mapping entries at the same indent level
+                                // The mapping started at min_indent, not current_column
+                                while (!self.lexer.isEOF()) {
+                                    self.skipWhitespaceAndComments();
+                                    if (self.lexer.isEOF()) break;
+  
+                                    const next_indent = self.getCurrentIndent();
+                                    // std.debug.print("DEBUG: Checking for more entries, next_indent={}, min_indent={}\n", .{next_indent, min_indent});
+                                    if (next_indent != min_indent) break;
+  
+                                    // Parse the next key
+                                    const next_key = try self.parsePlainScalar();
+  
+                                    self.skipSpaces();
+                                    if (self.lexer.peek() != ':') {
+                                        self.arena.allocator().destroy(next_key);
+                                        break;
+                                    }
+                                    self.lexer.advanceChar(); // Skip ':'
+                                    self.skipSpaces();
+  
+                                    // Parse the value
+                                    var next_value: ?*ast.Node = null;
+                                    if (Lexer.isLineBreak(self.lexer.peek()) or self.lexer.isEOF()) {
+                                        self.skipToNextLine();
+                                        const value_indent = self.getCurrentIndent();
+                                        if (value_indent > min_indent) {
+                                            next_value = try self.parseValue(value_indent);
+                                        }
+                                    } else {
+                                        next_value = try self.parseValue(min_indent);
+                                    }
+  
+                                    if (next_value == null) {
+                                        next_value = try self.createNullNode();
+                                    }
+  
+                                    try mapping_node.data.mapping.pairs.append(.{ .key = next_key, .value = next_value.? });
+                                }
+  
+                                node = mapping_node;
+                            } else {
+                                // No anchor, proceed normally
+                                self.lexer.pos = save_pos;
+                                self.lexer.line = save_line;
+                                self.lexer.column = save_column;
+                                self.arena.allocator().destroy(scalar);
+                                node = try self.parseBlockMapping(min_indent);
+                            }
                     } else {
                         node = scalar;
                         
