@@ -119,13 +119,8 @@ jobs:
           }
           
           if (failingTests.trim()) {
-            comment += `\n\n### Failing Tests\n\`\`\`\n${failingTests}\`\`\``;
+            comment += `\n\n### Failing Tests\n${failingTests}`;
           }
-          
-          comment += `\n\n### Next Steps
-          - Run \`zig build test-yaml -- zig --verbose\` locally for detailed output
-          - Check individual test files in \`yaml-test-suite/\` directory
-          - Reference implementations: TypeScript (94.8%), Rust (83.8%)`;
           
           github.rest.issues.createComment({
             issue_number: context.issue.number,
