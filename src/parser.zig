@@ -435,6 +435,27 @@ pub const Parser = struct {
         
         var node: ?*ast.Node = null;
         
+        // If we have only properties (anchor/tag) on this line and we're in block context,
+        // allow the properties to apply to the next indented node on the following line.
+        if (node == null and (anchor != null or tag != null) and !self.in_flow_context and (Lexer.isLineBreak(ch) or self.lexer.isEOF())) {
+            const save_pos = self.lexer.pos;
+            const save_line = self.lexer.line;
+            const save_column = self.lexer.column;
+
+            // Move to the next content line and measure indent
+            self.skipToNextLine();
+            const next_indent = self.getCurrentIndent();
+            if (next_indent > min_indent) {
+                // Parse the actual node content at the increased indentation
+                node = try self.parseValue(next_indent);
+            } else {
+                // Not actually a child node; restore position
+                self.lexer.pos = save_pos;
+                self.lexer.line = save_line;
+                self.lexer.column = save_column;
+            }
+        }
+
         if (ch == '[') {
             // Record the starting line for multiline implicit key detection
             const start_line = self.lexer.line;
@@ -823,7 +844,11 @@ pub const Parser = struct {
         // Apply anchor and tag if present
         if (node) |n| {
             if (anchor) |a| {
-                // Register the anchor (redefinition is allowed per YAML 1.2 spec)
+                // Reject duplicate anchors on the same node
+                if (n.anchor != null) {
+                    return error.DuplicateAnchor;
+                }
+                // Register the anchor (redefinition is allowed across nodes per YAML 1.2 spec)
                 // Aliases refer to the most recent node with the same anchor name
                 try self.anchors.put(a, n);
                 n.anchor = a;
@@ -2285,6 +2310,90 @@ pub const Parser = struct {
                          self.lexer.peekNext() == '\n' or self.lexer.peekNext() == '\r' or 
                          self.lexer.peekNext() == 0)) {
                         return error.SequenceOnSameLineAsMappingKey;
+                    }
+                    
+                    // Handle property-only value on the same line (e.g., "key: &anchor\n  &v value")
+                    // If the remainder of this line consists only of anchor/tag properties, carry them
+                    // to the next indented node and detect duplicate anchors if the next line also anchors the node.
+                    if (self.lexer.peek() == '&' or self.lexer.peek() == '!') {
+                        const save_pos = self.lexer.pos;
+                        const save_line = self.lexer.line;
+                        const save_column = self.lexer.column;
+                        
+                        var carried_anchor: ?[]const u8 = null;
+                        var carried_tag: ?[]const u8 = null;
+                        
+                        // Parse one or more properties on the remainder of this line
+                        while (!self.lexer.isEOF()) {
+                            const chp = self.lexer.peek();
+                            if (chp == '&') {
+                                self.lexer.advanceChar();
+                                const astart = self.lexer.pos;
+                                while (!self.lexer.isEOF() and Lexer.isAnchorChar(self.lexer.peek())) {
+                                    self.lexer.advanceChar();
+                                }
+                                carried_anchor = self.lexer.input[astart..self.lexer.pos];
+                                self.skipSpaces();
+                                continue;
+                            } else if (chp == '!') {
+                                self.lexer.advanceChar();
+                                const tstart = self.lexer.pos;
+                                if (self.lexer.peek() == '<') {
+                                    self.lexer.advanceChar();
+                                    while (!self.lexer.isEOF() and self.lexer.peek() != '>') {
+                                        self.lexer.advanceChar();
+                                    }
+                                    if (!self.lexer.isEOF()) self.lexer.advanceChar();
+                                } else {
+                                    while (!self.lexer.isEOF()) {
+                                        const n = self.lexer.peek();
+                                        if (Lexer.isWhitespace(n) or Lexer.isFlowIndicator(n) or n == ':') break;
+                                        self.lexer.advanceChar();
+                                    }
+                                }
+                                carried_tag = self.lexer.input[tstart - 1..self.lexer.pos];
+                                self.skipSpaces();
+                                continue;
+                            }
+                            break;
+                        }
+                        
+                        // If after properties we hit end of line/EOF, treat as property-only
+                        if (self.lexer.isEOF() or Lexer.isLineBreak(self.lexer.peek())) {
+                            // Move to next content line and parse the actual node
+                            self.skipToNextLine();
+                            const v_indent = self.getCurrentIndent();
+                            if (v_indent > current_indent) {
+                                var v = try self.parseValue(v_indent);
+                                if (v == null) {
+                                    v = try self.createNullNode();
+                                }
+                                // Apply carried properties and detect duplicate anchors
+                                if (v) |vn| {
+                                    if (carried_anchor) |ca| {
+                                        if (vn.anchor != null) return error.DuplicateAnchor;
+                                        try self.anchors.put(ca, vn);
+                                        vn.anchor = ca;
+                                    }
+                                    if (carried_tag) |ct| {
+                                        vn.tag = ct;
+                                    }
+                                }
+                                try node.data.mapping.pairs.append(.{ .key = key.?, .value = v.? });
+                                processing_explicit_key_value = false;
+                                
+                                // After placing the value, handle trailing newline/comment
+                                if (!self.lexer.isEOF() and (Lexer.isLineBreak(self.lexer.peek()) or self.lexer.peek() == '#')) {
+                                    self.skipToNextLine();
+                                }
+                                continue;
+                            }
+                        }
+                        
+                        // Not property-only, restore position and continue normal processing
+                        self.lexer.pos = save_pos;
+                        self.lexer.line = save_line;
+                        self.lexer.column = save_column;
                     }
                     
                     // For same-line values in block mappings, we need to prevent parsing implicit mappings
@@ -3878,5 +3987,3 @@ test "parser handles CR line endings" {
     try std.testing.expectEqualStrings("key2", map.pairs.items[1].key.data.scalar.value);
     try std.testing.expectEqualStrings("value2", map.pairs.items[1].value.data.scalar.value);
 }
-
-
