@@ -7,8 +7,13 @@ pub fn main() !void {
     
     std.debug.print("Parsing: '{s}'\n\n", .{input});
     
+    // Create a GeneralPurposeAllocator for the parser
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+    
     // Create a parser to get more detail
-    var p = try parser.Parser.init(std.heap.page_allocator, input);
+    var p = try parser.Parser.init(allocator, input);
     defer p.deinit();
     
     // Advance past "- "
