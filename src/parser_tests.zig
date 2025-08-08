@@ -99,7 +99,9 @@ fn testRustParser(yaml_input: []const u8) !bool {
 // Helper to validate a test case across all parsers
 fn validateWithAllParsers(input: []const u8, should_fail: bool) !void {
     // Test with Zig parser
-    const zig_result = if (parser.parse(input)) |_| true else |_| false;
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const zig_result = if (parser.parse(arena.allocator(), input)) |_| true else |_| false;
 
     // Test with TypeScript parser
     const ts_result = try testTypescriptParser(input);

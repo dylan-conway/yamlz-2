@@ -193,7 +193,9 @@ fn runSingleTest(
     // Run parser based on backend
     const parse_success = switch (parser_backend) {
         .zig => blk: {
-            const doc = parser.parse(yaml_input) catch {
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            defer arena.deinit();
+            const doc = parser.parse(arena.allocator(), yaml_input) catch {
                 break :blk false;
             };
             _ = doc;

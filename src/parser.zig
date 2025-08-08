@@ -61,7 +61,6 @@ pub const ParseError = error{
 pub const Parser = struct {
     lexer: Lexer,
     allocator: std.mem.Allocator,
-    arena: *std.heap.ArenaAllocator,  // Changed to pointer
     in_flow_context: bool = false,
     parsing_explicit_key: bool = false,
     has_yaml_directive: bool = false,
@@ -73,23 +72,19 @@ pub const Parser = struct {
     anchors: std.StringHashMap(*ast.Node),  // For anchor/alias resolution
     tag_handles: std.StringHashMap([]const u8),  // For TAG directive support
     
-    pub fn init(allocator: std.mem.Allocator, input: []const u8) !Parser {
-        const arena = try allocator.create(std.heap.ArenaAllocator);
-        arena.* = std.heap.ArenaAllocator.init(allocator);
-        const arena_alloc = arena.allocator();
+    pub fn init(allocator: std.mem.Allocator, input: []const u8) Parser {
         return .{
             .lexer = Lexer.init(input),
             .allocator = allocator,
-            .arena = arena,
-            .context_stack = std.ArrayList(Context).init(arena_alloc),
-            .anchors = std.StringHashMap(*ast.Node).init(arena_alloc),
-            .tag_handles = std.StringHashMap([]const u8).init(arena_alloc),
+            .context_stack = std.ArrayList(Context).init(allocator),
+            .anchors = std.StringHashMap(*ast.Node).init(allocator),
+            .tag_handles = std.StringHashMap([]const u8).init(allocator),
         };
     }
     
     pub fn deinit(self: *Parser) void {
-        self.arena.deinit();
-        self.allocator.destroy(self.arena);
+        // Caller is responsible for managing allocator lifetime
+        _ = self;
     }
     
     fn pushContext(self: *Parser, new_context: Context) !void {
@@ -142,7 +137,7 @@ pub const Parser = struct {
                 self.lexer.advance(3);
                 return ast.Document{
                     .root = null,
-                    .allocator = self.arena.allocator(),
+                    .allocator = self.allocator,
                 };
             } else {
                 // Content starts - parse it and exit the directive loop
@@ -182,7 +177,7 @@ pub const Parser = struct {
         
         return ast.Document{
             .root = root,
-            .allocator = self.arena.allocator(),
+            .allocator = self.allocator,
         };
     }
     
@@ -530,10 +525,10 @@ pub const Parser = struct {
                     self.popContext();
                     
                     // Now create a mapping and parse the rest
-                    const mapping_node = try self.arena.allocator().create(ast.Node);
+                    const mapping_node = try self.allocator.create(ast.Node);
                     mapping_node.* = .{
                         .type = .mapping,
-                        .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.arena.allocator()) } },
+                        .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.allocator) } },
                     };
                     
                     // Skip the colon
@@ -629,7 +624,7 @@ pub const Parser = struct {
                 self.lexer.pos = save_pos;
                 self.lexer.line = save_line;
                 self.lexer.column = save_column;
-                self.arena.allocator().destroy(temp_scalar);
+                self.allocator.destroy(temp_scalar);
                 
                 if (is_mapping_key) {
                     // Check if the key spans multiple lines - this is invalid for implicit keys
@@ -721,10 +716,10 @@ pub const Parser = struct {
                                 }
   
                                 // Create the mapping node
-                                const mapping_node = try self.arena.allocator().create(ast.Node);
+                                const mapping_node = try self.allocator.create(ast.Node);
                                 mapping_node.* = .{
                                     .type = .mapping,
-                                    .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.arena.allocator()) } },
+                                    .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.allocator) } },
                                 };
                                 try mapping_node.data.mapping.pairs.append(.{ .key = scalar, .value = value.? });
   
@@ -743,7 +738,7 @@ pub const Parser = struct {
   
                                     self.skipSpaces();
                                     if (self.lexer.peek() != ':') {
-                                        self.arena.allocator().destroy(next_key);
+                                        self.allocator.destroy(next_key);
                                         break;
                                     }
                                     self.lexer.advanceChar(); // Skip ':'
@@ -774,7 +769,7 @@ pub const Parser = struct {
                                 self.lexer.pos = save_pos;
                                 self.lexer.line = save_line;
                                 self.lexer.column = save_column;
-                                self.arena.allocator().destroy(scalar);
+                                self.allocator.destroy(scalar);
                                 node = try self.parseBlockMapping(min_indent);
                             }
                     } else {
@@ -846,7 +841,7 @@ pub const Parser = struct {
                         // Look up the handle in our tag_handles map
                         if (self.tag_handles.get(handle)) |prefix| {
                             // Concatenate prefix and suffix
-                            var tag_buffer = std.ArrayList(u8).init(self.arena.allocator());
+                            var tag_buffer = std.ArrayList(u8).init(self.allocator);
                             try tag_buffer.appendSlice(prefix);
                             try tag_buffer.appendSlice(suffix);
                             resolved_tag = tag_buffer.items;
@@ -1309,7 +1304,7 @@ pub const Parser = struct {
         
         // Fold newlines in plain scalars to spaces (YAML folding rules)
         // We need to replace single newlines with spaces
-        var folded_value = std.ArrayList(u8).init(self.arena.allocator());
+        var folded_value = std.ArrayList(u8).init(self.allocator);
         var i: usize = 0;
         while (i < value.len) {
             if (i < value.len - 1 and Lexer.isLineBreak(value[i])) {
@@ -1364,7 +1359,7 @@ pub const Parser = struct {
         
         // std.debug.print("DEBUG: parsePlainScalar done, value='{s}', final_pos={}\n", .{value, self.lexer.pos});
         
-        const node = try self.arena.allocator().create(ast.Node);
+        const node = try self.allocator.create(ast.Node);
         node.* = .{
             .type = .scalar,
             .data = .{ .scalar = .{ .value = value, .style = .plain } },
@@ -1376,22 +1371,21 @@ pub const Parser = struct {
     fn parseFlowSequence(self: *Parser) ParseError!*ast.Node {
         // Record the column where the flow sequence starts (before advancing past '[')
         const flow_indent = self.lexer.column;
-        const at_document_root = self.context == .BLOCK_OUT;
         self.lexer.advanceChar(); // Skip '['
         const saved_flow_context = self.in_flow_context;
         self.in_flow_context = true;
         defer self.in_flow_context = saved_flow_context;
-
+        
         // Push FLOW_IN context when entering a flow sequence
         try self.pushContext(.FLOW_IN);
         defer self.popContext();
         
         try self.skipWhitespaceAndCommentsInFlowWithIndent(flow_indent);
         
-        const node = try self.arena.allocator().create(ast.Node);
+        const node = try self.allocator.create(ast.Node);
         node.* = .{
             .type = .sequence,
-            .data = .{ .sequence = .{ .items = std.ArrayList(*ast.Node).init(self.arena.allocator()) } },
+            .data = .{ .sequence = .{ .items = std.ArrayList(*ast.Node).init(self.allocator) } },
         };
         
         var first_item = true;
@@ -1423,10 +1417,10 @@ pub const Parser = struct {
                 const map_value = try self.parseValue(0) orelse try self.createNullNode();
                 
                 // Create a mapping with single pair (null key)
-                const map_node = try self.arena.allocator().create(ast.Node);
+                const map_node = try self.allocator.create(ast.Node);
                 map_node.* = .{
                     .type = .mapping,
-                    .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.arena.allocator()) } },
+                    .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.allocator) } },
                 };
                 const null_key = try self.createNullNode();
                 try map_node.data.mapping.pairs.append(.{ .key = null_key, .value = map_value });
@@ -1454,10 +1448,10 @@ pub const Parser = struct {
                         const map_value = try self.parseValue(0) orelse try self.createNullNode();
                         
                         // Create a mapping with single pair
-                        const map_node = try self.arena.allocator().create(ast.Node);
+                        const map_node = try self.allocator.create(ast.Node);
                         map_node.* = .{
                             .type = .mapping,
-                            .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.arena.allocator()) } },
+                            .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.allocator) } },
                         };
                         try map_node.data.mapping.pairs.append(.{ .key = value, .value = map_value });
                         try node.data.sequence.items.append(map_node);
@@ -1481,45 +1475,31 @@ pub const Parser = struct {
             if (!self.lexer.isEOF() and self.lexer.peek() == '#') {
                 return error.InvalidComment;
             }
-
-            if (at_document_root) {
-                const save_pos = self.lexer.pos;
-                const save_line = self.lexer.line;
-                const save_column = self.lexer.column;
-                self.skipWhitespaceAndComments();
-                if (!self.lexer.isEOF() and !self.lexer.match("---") and !self.lexer.match("...") and self.lexer.peek() != ':') {
-                    return error.InvalidContentAfterDocumentEnd;
-                }
-                self.lexer.pos = save_pos;
-                self.lexer.line = save_line;
-                self.lexer.column = save_column;
-            }
         } else {
             return error.ExpectedCloseBracket;
         }
-
+        
         return node;
     }
     
     fn parseFlowMapping(self: *Parser) ParseError!*ast.Node {
         // Record the column where the flow mapping starts (before advancing past '{')
         const flow_indent = self.lexer.column;
-        const at_document_root = self.context == .BLOCK_OUT;
         self.lexer.advanceChar(); // Skip '{'
         const saved_flow_context = self.in_flow_context;
         self.in_flow_context = true;
         defer self.in_flow_context = saved_flow_context;
-
+        
         // Push FLOW_IN context when entering a flow mapping
         try self.pushContext(.FLOW_IN);
         defer self.popContext();
         
         try self.skipWhitespaceAndCommentsInFlowWithIndent(flow_indent);
         
-        const node = try self.arena.allocator().create(ast.Node);
+        const node = try self.allocator.create(ast.Node);
         node.* = .{
             .type = .mapping,
-            .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.arena.allocator()) } },
+            .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.allocator) } },
         };
         
         while (!self.lexer.isEOF() and self.lexer.peek() != '}') {
@@ -1603,7 +1583,7 @@ pub const Parser = struct {
         
         if (self.lexer.peek() == '}') {
             self.lexer.advanceChar();
-
+            
             // After closing a flow mapping, check for invalid content on the same line
             // when we entered from block context (saved_flow_context == false)
             if (!saved_flow_context) {
@@ -1611,7 +1591,7 @@ pub const Parser = struct {
                 // Check for invalid content after the closing brace
                 const saved_pos = self.lexer.pos;
                 self.skipSpaces();
-
+                
                 if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
                     const ch = self.lexer.peek();
                     if (ch == '#') {
@@ -1655,23 +1635,10 @@ pub const Parser = struct {
                     return error.InvalidValueAfterMapping;
                 }
             }
-
-            if (at_document_root) {
-                const save_pos = self.lexer.pos;
-                const save_line = self.lexer.line;
-                const save_column = self.lexer.column;
-                self.skipWhitespaceAndComments();
-                if (!self.lexer.isEOF() and !self.lexer.match("---") and !self.lexer.match("...") and self.lexer.peek() != ':') {
-                    return error.InvalidContentAfterDocumentEnd;
-                }
-                self.lexer.pos = save_pos;
-                self.lexer.line = save_line;
-                self.lexer.column = save_column;
-            }
         } else {
             return error.ExpectedCloseBrace;
         }
-
+        
         return node;
     }
     
@@ -1679,10 +1646,10 @@ pub const Parser = struct {
         // std.debug.print("DEBUG: parseBlockSequence entered, pos={}, char='{}' ({}), line={}, col={}\n", 
         //     .{self.lexer.pos, self.lexer.peek(), self.lexer.peek(), self.lexer.line, self.lexer.column});
         
-        const node = try self.arena.allocator().create(ast.Node);
+        const node = try self.allocator.create(ast.Node);
         node.* = .{
             .type = .sequence,
-            .data = .{ .sequence = .{ .items = std.ArrayList(*ast.Node).init(self.arena.allocator()) } },
+            .data = .{ .sequence = .{ .items = std.ArrayList(*ast.Node).init(self.allocator) } },
         };
         
         // Push BLOCK_IN context when entering a block sequence
@@ -1846,10 +1813,10 @@ pub const Parser = struct {
     
     fn parseBlockMapping(self: *Parser, min_indent: usize) ParseError!*ast.Node {
         // std.debug.print("DEBUG: parseBlockMapping called, min_indent={}\n", .{min_indent});
-        const node = try self.arena.allocator().create(ast.Node);
+        const node = try self.allocator.create(ast.Node);
         node.* = .{
             .type = .mapping,
-            .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.arena.allocator()) } },
+            .data = .{ .mapping = .{ .pairs = std.ArrayList(ast.Pair).init(self.allocator) } },
         };
         
         // Push BLOCK_IN context when entering a block mapping
@@ -1911,7 +1878,7 @@ pub const Parser = struct {
                     pending_explicit_key = null;
                     
                     // Create a null node for the value
-                    const null_node = try self.arena.allocator().create(ast.Node);
+                    const null_node = try self.allocator.create(ast.Node);
                     null_node.* = ast.Node{
                         .type = .scalar,
                         .start_line = self.lexer.line,
@@ -2065,7 +2032,7 @@ pub const Parser = struct {
                     try self.pushContext(.BLOCK_KEY);
                     key = (try self.parseValue(self.lexer.column)) orelse blk: {
                        // If parseValue returns null, create an empty scalar node
-                        const empty_node = try self.arena.allocator().create(ast.Node);
+                        const empty_node = try self.allocator.create(ast.Node);
                         empty_node.* = .{
                             .type = .scalar,
                             .data = .{ .scalar = .{ .value = "" } }
@@ -2109,7 +2076,7 @@ pub const Parser = struct {
                         
                         // If we're at EOF, this explicit key has no value - create null value immediately
                         if (self.lexer.isEOF()) {
-                            const null_node = try self.arena.allocator().create(ast.Node);
+                            const null_node = try self.allocator.create(ast.Node);
                             null_node.* = ast.Node{
                                 .type = .scalar,
                                 .start_line = self.lexer.line,
@@ -2151,7 +2118,7 @@ pub const Parser = struct {
                     // Check if the key spans multiple lines - this is invalid for implicit keys
                     if (self.lexer.line > start_line) {
                         if (key != null) {
-                            self.arena.allocator().destroy(key.?);
+                            self.allocator.destroy(key.?);
                         }
                         self.popContext();
                         return error.InvalidMultilineKey;
@@ -2196,26 +2163,30 @@ pub const Parser = struct {
                     if (self.lexer.peek() != ':') {
                         // In a block mapping, if we parse something that looks like a plain scalar key
                         // but doesn't have a colon, check if it's actually invalid content
-                        // Only report error if:
-                        // 1. We're at the mapping indent level
-                        // 2. We successfully parsed a non-empty plain scalar
-                        // 3. The scalar is not an anchor/alias/tag indicator
+                        
+                        // First check: if we've already established a mapping (at least one pair parsed)
+                        // and we're at the mapping indentation level with a plain scalar,
+                        // it must be a key and needs a colon
                         if (mapping_indent != null and current_indent == mapping_indent.? and
-                            key != null and key.?.data.scalar.value.len > 0) {
-                            // Check if this looks like valid YAML content that's just not a key
+                            key != null and key.?.type == .scalar) {
+                            // This is content at the mapping indentation that looks like a key but has no colon
+                            // This is invalid - it should either be a key with colon or not be here at all
                             const scalar_value = key.?.data.scalar.value;
-                            // If it starts with special characters, it might be valid non-key content
-                            if (scalar_value[0] != '&' and scalar_value[0] != '*' and
+                            
+                            // Exception: certain special characters might indicate valid non-key content
+                            // (though in practice most of these wouldn't parse as plain scalars anyway)
+                            if (scalar_value.len > 0 and
+                                scalar_value[0] != '&' and scalar_value[0] != '*' and
                                 scalar_value[0] != '!' and scalar_value[0] != '-' and
                                 scalar_value[0] != '[' and scalar_value[0] != '{' and
                                 scalar_value[0] != '.') {
                                 // A plain word at the mapping indent without a colon
-                                // indicates a missing colon after a mapping key
-                                self.arena.allocator().destroy(key.?);
-                                return error.ExpectedColon;
+                                // indicates invalid content after the mapping
+                                self.allocator.destroy(key.?);
+                                return error.InvalidContent;
                             }
                         }
-                        self.arena.allocator().destroy(key.?);
+                        self.allocator.destroy(key.?);
                         break;
                     }
                     self.lexer.advanceChar();
@@ -2415,7 +2386,7 @@ pub const Parser = struct {
                 }
             } else {
                 if (key) |k| {
-                    self.arena.allocator().destroy(k);
+                    self.allocator.destroy(k);
                 }
                 break;
             }
@@ -2428,7 +2399,7 @@ pub const Parser = struct {
     fn parseSingleQuotedScalar(self: *Parser) ParseError!*ast.Node {
         self.lexer.advanceChar(); // Skip opening quote
         
-        var result = std.ArrayList(u8).init(self.arena.allocator());
+        var result = std.ArrayList(u8).init(self.allocator);
         var at_line_start = false;
         
         while (!self.lexer.isEOF()) {
@@ -2509,7 +2480,7 @@ pub const Parser = struct {
             }
         }
         
-        const node = try self.arena.allocator().create(ast.Node);
+        const node = try self.allocator.create(ast.Node);
         node.* = .{
             .type = .scalar,
             .data = .{ .scalar = .{ .value = result.items, .style = .single_quoted } },
@@ -2523,7 +2494,7 @@ pub const Parser = struct {
         const start_column = self.lexer.column - 1; // Column before the opening quote
         self.lexer.advanceChar(); // Skip opening quote
         
-        var result = std.ArrayList(u8).init(self.arena.allocator());
+        var result = std.ArrayList(u8).init(self.allocator);
         var found_closing_quote = false;
         
         while (!self.lexer.isEOF()) {
@@ -2835,7 +2806,7 @@ pub const Parser = struct {
             }
         }
         
-        const node = try self.arena.allocator().create(ast.Node);
+        const node = try self.allocator.create(ast.Node);
         node.* = .{
             .type = .scalar,
             .data = .{ .scalar = .{ .value = result.items, .style = .double_quoted } },
@@ -2845,7 +2816,7 @@ pub const Parser = struct {
     }
     
     fn createNullNode(self: *Parser) ParseError!*ast.Node {
-        const node = try self.arena.allocator().create(ast.Node);
+        const node = try self.allocator.create(ast.Node);
         node.* = .{
             .type = .scalar,
             .data = .{ .scalar = .{ .value = "null", .style = .plain } },
@@ -2896,12 +2867,12 @@ pub const Parser = struct {
             try self.skipSpacesCheckTabs();
             
             // Create a sequence with a single entry
-            const sequence_node = try self.arena.allocator().create(ast.Node);
+            const sequence_node = try self.allocator.create(ast.Node);
             sequence_node.* = ast.Node{
                 .type = .sequence,
                 .start_line = self.lexer.line,
                 .start_column = self.lexer.column,
-                .data = .{ .sequence = .{ .items = std.ArrayList(*ast.Node).init(self.arena.allocator()) } },
+                .data = .{ .sequence = .{ .items = std.ArrayList(*ast.Node).init(self.allocator) } },
             };
             
             const entry = try self.parseSingleBlockNode(min_indent) orelse try self.createNullNode();
@@ -3014,7 +2985,7 @@ pub const Parser = struct {
             break :blk detected_indent;
         };
         
-        var result = std.ArrayList(u8).init(self.arena.allocator());
+        var result = std.ArrayList(u8).init(self.allocator);
         var had_content = false;
         var trailing_breaks: usize = 0;
         
@@ -3106,7 +3077,7 @@ pub const Parser = struct {
             },
         }
         
-        const node = try self.arena.allocator().create(ast.Node);
+        const node = try self.allocator.create(ast.Node);
         node.* = .{
             .type = .scalar,
             .data = .{ .scalar = .{ .value = result.items, .style = .literal } },
@@ -3211,7 +3182,7 @@ pub const Parser = struct {
             break :blk detected_indent;
         };
         
-        var result = std.ArrayList(u8).init(self.arena.allocator());
+        var result = std.ArrayList(u8).init(self.allocator);
         var had_content = false;
         var trailing_breaks: usize = 0;
         var last_was_empty = false;
@@ -3304,7 +3275,7 @@ pub const Parser = struct {
             },
         }
         
-        const node = try self.arena.allocator().create(ast.Node);
+        const node = try self.allocator.create(ast.Node);
         node.* = .{
             .type = .scalar,
             .data = .{ .scalar = .{ .value = result.items, .style = .folded } },
@@ -3644,7 +3615,7 @@ pub const Parser = struct {
     }
     
     pub fn parseStream(self: *Parser) ParseError!ast.Stream {
-        var stream = ast.Stream.init(self.arena.allocator());
+        var stream = ast.Stream.init(self.allocator);
         
         // Skip any leading whitespace and comments
         self.skipWhitespaceAndComments();
@@ -3663,7 +3634,7 @@ pub const Parser = struct {
             
             // Parse document content
             var document = ast.Document{
-                .allocator = self.arena.allocator(),
+                .allocator = self.allocator,
             };
             
             // Reset document content flag for each document
@@ -3704,10 +3675,6 @@ pub const Parser = struct {
                 } else {
                     // Parse document content
                     self.has_document_content = true;
-                    
-                    // Save position to check what we're parsing
-                    const pre_parse_pos = self.lexer.pos;
-                    
                     document.root = try self.parseValue(0);
                     
                     // After parsing the root value, check for unexpected content
@@ -3719,27 +3686,9 @@ pub const Parser = struct {
                         if (ch == ']' or ch == '}') {
                             return error.UnexpectedCharacter;
                         }
-                        
-                        // After a complete document (especially flow collections), 
-                        // any additional non-whitespace content is invalid
-                        // This catches cases like KS4U: "[item]\ninvalid item"
-                        // where content appears after a complete flow sequence
-                        // BUT we need to allow flow collections as mapping keys like "[key]: value"
-                        
-                        // Check if what we parsed was a flow collection at the root level
-                        // and whether it's followed by a colon (making it a mapping key)
-                        const starts_with_flow = pre_parse_pos < self.lexer.input.len and
-                            (self.lexer.input[pre_parse_pos] == '[' or self.lexer.input[pre_parse_pos] == '{');
-                        
-                        if (starts_with_flow and ch != ':') {
-                            // Flow collection at root not followed by colon means 
-                            // any additional content is invalid
-                            return error.InvalidContentAfterDocumentEnd;
-                        }
-                        
+                        // For sequence documents, disallow additional content that starts
+                        // at column 0 without a '-' indicator (BD7L case)
                         if (document.root) |root_node| {
-                            
-                            // Original check for sequences with content at column 0
                             if (root_node.type == .sequence) {
                                 var idx = self.lexer.pos;
                                 const len = self.lexer.input.len;
@@ -3826,32 +3775,28 @@ pub const Parser = struct {
             if (self.lexer.isEOF() or self.isAtDocumentMarker()) {
                 continue;
             }
-
+            
             // If there's more content without explicit markers, it might be another bare document
             // But for now, let's be conservative and stop here
             break;
         }
-
+        
         return stream;
     }
 };
 
-pub fn parseStream(input: []const u8) ParseError!ast.Stream {
-    // Create parser on heap to keep arena alive
-    const parser_ptr = try std.heap.page_allocator.create(Parser);
-    parser_ptr.* = try Parser.init(std.heap.page_allocator, input);
-    // Don't deinit the parser - the arena owns the memory
-    return try parser_ptr.parseStream();
+pub fn parseStream(allocator: std.mem.Allocator, input: []const u8) ParseError!ast.Stream {
+    var parser = Parser.init(allocator, input);
+    defer parser.deinit();
+    return try parser.parseStream();
 }
 
-pub fn parse(input: []const u8) ParseError!ast.Document {
-    // Create parser on heap to keep arena alive
-    const parser_ptr = try std.heap.page_allocator.create(Parser);
-    parser_ptr.* = try Parser.init(std.heap.page_allocator, input);
-    // Don't deinit the parser - the arena owns the memory and we need it to stay alive
+pub fn parse(allocator: std.mem.Allocator, input: []const u8) ParseError!ast.Document {
+    var parser = Parser.init(allocator, input);
+    defer parser.deinit();
     
     // Use stream parsing to handle multi-document inputs properly
-    const stream = try parser_ptr.parseStream();
+    const stream = try parser.parseStream();
 
     // For backward compatibility, return the first document if available
     if (stream.documents.items.len > 0) {
@@ -3859,14 +3804,16 @@ pub fn parse(input: []const u8) ParseError!ast.Document {
     } else {
         // Return empty document
         return ast.Document{
-            .allocator = parser_ptr.arena.allocator(),
+            .allocator = allocator,
         };
     }
 }
 
 test "parser handles CR line endings" {
     const input = "key1: value1\rkey2: value2\r";
-    var doc = try parse(input);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var doc = try parse(arena.allocator(), input);
     defer doc.deinit();
     try std.testing.expect(doc.root != null);
     const root = doc.root.?;
