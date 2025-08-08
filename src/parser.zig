@@ -1752,10 +1752,14 @@ pub const Parser = struct {
                 
                 // The parseValue call will have consumed all the content for this item,
                 // including any mappings or nested structures.
-                // Only skip to next line if we're not already at a line break
-                // (multiline scalars may have already consumed multiple lines)
-                if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
-                    self.skipToNextLine();
+                // After an item we might be sitting on a newline or a comment that
+                // wasn't consumed by parseValue (plain scalars stop before the line
+                // break). In that case we need to advance to the start of the next
+                // content line so the following iteration sees the correct indent.
+                if (!self.lexer.isEOF()) {
+                    if (Lexer.isLineBreak(self.lexer.peek()) or self.lexer.peek() == '#') {
+                        self.skipToNextLine();
+                    }
                 }
                 
                 // After processing an item, check if there's a floating anchor on the next line
@@ -1803,9 +1807,13 @@ pub const Parser = struct {
                 // but isn't a valid sequence item (missing '-' prefix)
                 if (current_indent == (sequence_indent orelse min_indent)) {
                     const ch = self.lexer.peek();
-                    // If we see an anchor (&) or tag (!) at sequence indentation without '-', it's an error
+                    // Anchors or tags without a preceding '-' are always invalid
                     if (ch == '&' or ch == '!') {
                         return error.InvalidAnchor;
+                    }
+                    // Any other non-comment content at this indentation is invalid
+                    if (!Lexer.isLineBreak(ch) and ch != '#' and ch != 0) {
+                        return error.InvalidContent;
                     }
                 }
                 
