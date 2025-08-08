@@ -45,22 +45,20 @@
     }
 };
 
-pub fn parseStream(input: []const u8) ParseError!ast.Stream {
-    // Create parser on heap to keep arena alive
-    const parser_ptr = try std.heap.page_allocator.create(Parser);
-    parser_ptr.* = try Parser.init(std.heap.page_allocator, input);
-    // Don't deinit the parser - the arena owns the memory
-    return try parser_ptr.parseStream();
+pub fn parseStream(allocator: std.mem.Allocator, input: []const u8) ParseError!ast.Stream {
+    // Create parser using the provided allocator
+    var parser = try Parser.init(allocator, input);
+    // Don't deinit the parser - the caller manages the allocator's lifetime
+    return try parser.parseStream();
 }
 
-pub fn parse(input: []const u8) ParseError!ast.Document {
-    // Create parser on heap to keep arena alive
-    const parser_ptr = try std.heap.page_allocator.create(Parser);
-    parser_ptr.* = try Parser.init(std.heap.page_allocator, input);
-    // Don't deinit the parser - the arena owns the memory and we need it to stay alive
+pub fn parse(allocator: std.mem.Allocator, input: []const u8) ParseError!ast.Document {
+    // Create parser using the provided allocator
+    var parser = try Parser.init(allocator, input);
+    // Don't deinit the parser - the caller manages the allocator's lifetime
     
     // Use stream parsing to handle multi-document inputs properly
-    const stream = try parser_ptr.parseStream();
+    const stream = try parser.parseStream();
     
     // For backward compatibility, return the first document if available
     if (stream.documents.items.len > 0) {
@@ -68,7 +66,7 @@ pub fn parse(input: []const u8) ParseError!ast.Document {
     } else {
         // Return empty document
         return ast.Document{
-            .allocator = parser_ptr.arena.allocator(),
+            .allocator = parser.allocator,
         };
     }
 }

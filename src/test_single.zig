@@ -61,7 +61,11 @@ pub fn main() !void {
     std.debug.print("Testing: {s}\n", .{file_path});
     std.debug.print("Content:\n{s}\n", .{content});
     
-    const result = parser.parse(content);
+    // Create an arena allocator for parsing
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    
+    const result = parser.parse(arena.allocator(), content);
     if (result) |doc| {
         std.debug.print("Result: SUCCESS - Document parsed\n", .{});
         if (doc.root) |root| {

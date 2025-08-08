@@ -11,9 +11,14 @@ pub fn main() !void {
     }
     std.debug.print("\n", .{});
     
+    // Create a GeneralPurposeAllocator for the parser
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+    
     // Create parser to check internal state
-    const parser_ptr = try std.heap.page_allocator.create(parser.Parser);
-    parser_ptr.* = try parser.Parser.init(std.heap.page_allocator, input);
+    const parser_ptr = try allocator.create(parser.Parser);
+    parser_ptr.* = try parser.Parser.init(allocator, input);
     
     std.debug.print("Initial lexer state: pos={}, line={}, peek='{}'\n", .{parser_ptr.lexer.pos, parser_ptr.lexer.line, parser_ptr.lexer.peek()});
     
