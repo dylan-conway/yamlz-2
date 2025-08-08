@@ -3921,21 +3921,20 @@ pub const Parser = struct {
             
             // Skip whitespace and comments but preserve document markers
             self.skipWhitespaceAndCommentsButNotDocumentMarkers();
-            
+
             // Check if we have a directive after content - this is invalid
             // BUT only if we didn't have a proper document end marker
             if (!has_document_end and !self.lexer.isEOF() and self.lexer.peek() == '%') {
                 return error.DirectiveAfterContent;
             }
-            
-            // If we're at another document marker or EOF, continue
-            if (self.lexer.isEOF() or self.isAtDocumentMarker()) {
-                continue;
+
+            // After skipping whitespace, any non-marker content indicates an invalid structure
+            if (!self.lexer.isEOF() and !self.isAtDocumentMarker()) {
+                return error.InvalidDocumentStructure;
             }
 
-            // If there's more content without explicit markers, it might be another bare document
-            // But for now, let's be conservative and stop here
-            break;
+            // At this point we're either at EOF or the start of the next document
+            continue;
         }
 
         return stream;
