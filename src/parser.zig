@@ -1376,11 +1376,12 @@ pub const Parser = struct {
     fn parseFlowSequence(self: *Parser) ParseError!*ast.Node {
         // Record the column where the flow sequence starts (before advancing past '[')
         const flow_indent = self.lexer.column;
+        const at_document_root = self.context == .BLOCK_OUT;
         self.lexer.advanceChar(); // Skip '['
         const saved_flow_context = self.in_flow_context;
         self.in_flow_context = true;
         defer self.in_flow_context = saved_flow_context;
-        
+
         // Push FLOW_IN context when entering a flow sequence
         try self.pushContext(.FLOW_IN);
         defer self.popContext();
@@ -1480,21 +1481,35 @@ pub const Parser = struct {
             if (!self.lexer.isEOF() and self.lexer.peek() == '#') {
                 return error.InvalidComment;
             }
+
+            if (at_document_root) {
+                const save_pos = self.lexer.pos;
+                const save_line = self.lexer.line;
+                const save_column = self.lexer.column;
+                self.skipWhitespaceAndComments();
+                if (!self.lexer.isEOF() and !self.lexer.match("---") and !self.lexer.match("...") and self.lexer.peek() != ':') {
+                    return error.InvalidContentAfterDocumentEnd;
+                }
+                self.lexer.pos = save_pos;
+                self.lexer.line = save_line;
+                self.lexer.column = save_column;
+            }
         } else {
             return error.ExpectedCloseBracket;
         }
-        
+
         return node;
     }
     
     fn parseFlowMapping(self: *Parser) ParseError!*ast.Node {
         // Record the column where the flow mapping starts (before advancing past '{')
         const flow_indent = self.lexer.column;
+        const at_document_root = self.context == .BLOCK_OUT;
         self.lexer.advanceChar(); // Skip '{'
         const saved_flow_context = self.in_flow_context;
         self.in_flow_context = true;
         defer self.in_flow_context = saved_flow_context;
-        
+
         // Push FLOW_IN context when entering a flow mapping
         try self.pushContext(.FLOW_IN);
         defer self.popContext();
@@ -1588,7 +1603,7 @@ pub const Parser = struct {
         
         if (self.lexer.peek() == '}') {
             self.lexer.advanceChar();
-            
+
             // After closing a flow mapping, check for invalid content on the same line
             // when we entered from block context (saved_flow_context == false)
             if (!saved_flow_context) {
@@ -1596,7 +1611,7 @@ pub const Parser = struct {
                 // Check for invalid content after the closing brace
                 const saved_pos = self.lexer.pos;
                 self.skipSpaces();
-                
+
                 if (!self.lexer.isEOF() and !Lexer.isLineBreak(self.lexer.peek())) {
                     const ch = self.lexer.peek();
                     if (ch == '#') {
@@ -1640,10 +1655,23 @@ pub const Parser = struct {
                     return error.InvalidValueAfterMapping;
                 }
             }
+
+            if (at_document_root) {
+                const save_pos = self.lexer.pos;
+                const save_line = self.lexer.line;
+                const save_column = self.lexer.column;
+                self.skipWhitespaceAndComments();
+                if (!self.lexer.isEOF() and !self.lexer.match("---") and !self.lexer.match("...") and self.lexer.peek() != ':') {
+                    return error.InvalidContentAfterDocumentEnd;
+                }
+                self.lexer.pos = save_pos;
+                self.lexer.line = save_line;
+                self.lexer.column = save_column;
+            }
         } else {
             return error.ExpectedCloseBrace;
         }
-        
+
         return node;
     }
     
@@ -3776,12 +3804,12 @@ pub const Parser = struct {
             if (self.lexer.isEOF() or self.isAtDocumentMarker()) {
                 continue;
             }
-            
+
             // If there's more content without explicit markers, it might be another bare document
             // But for now, let's be conservative and stop here
             break;
         }
-        
+
         return stream;
     }
 };
