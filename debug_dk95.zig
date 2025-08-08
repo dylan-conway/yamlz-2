@@ -2,7 +2,9 @@ const std = @import("std");
 const Parser = @import("src/parser.zig").Parser;
 
 pub fn main() void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
     defer arena.deinit();
 
     // Test case DK95/01: foo: "bar\n\tbaz"

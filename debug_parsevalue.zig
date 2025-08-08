@@ -3,12 +3,16 @@ const parser = @import("src/parser.zig");
 const Lexer = @import("src/lexer.zig").Lexer;
 
 pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+    
     const input = "- { y: z }- invalid";
     
     std.debug.print("Parsing: '{s}'\n\n", .{input});
     
     // Create a parser to get more detail
-    var p = try parser.Parser.init(std.heap.page_allocator, input);
+    var p = parser.Parser.init(allocator, input);
     defer p.deinit();
     
     // Advance past "- "

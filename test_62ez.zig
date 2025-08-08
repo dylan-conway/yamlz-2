@@ -3,7 +3,9 @@ const parser_mod = @import("src/parser.zig");
 const Parser = @import("src/parser.zig").Parser;
 
 pub fn main() !void {
-    const allocator = std.heap.page_allocator;
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
     const input = 
         \\---
         \\x: { y: z }in: valid

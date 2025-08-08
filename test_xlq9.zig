@@ -2,7 +2,9 @@ const std = @import("std");
 const yaml = @import("./src/yaml_parser.zig");
 
 pub fn main() !void {
-    const allocator = std.heap.page_allocator;
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
     
     const input = 
         \\---

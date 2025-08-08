@@ -2,6 +2,10 @@ const std = @import("std");
 const parser = @import("src/parser.zig");
 
 pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+    
     const input = "[23\n]: 42";
     
     std.debug.print("Input: {s}\n", .{input});
@@ -12,15 +16,15 @@ pub fn main() !void {
     std.debug.print("\n", .{});
     
     // Create parser to check internal state
-    const parser_ptr = try std.heap.page_allocator.create(parser.Parser);
-    parser_ptr.* = try parser.Parser.init(std.heap.page_allocator, input);
+    var parser_instance = parser.Parser.init(allocator, input);
+    defer parser_instance.deinit();
     
-    std.debug.print("Initial lexer state: pos={}, line={}, peek='{}'\n", .{parser_ptr.lexer.pos, parser_ptr.lexer.line, parser_ptr.lexer.peek()});
+    std.debug.print("Initial lexer state: pos={}, line={}, peek='{}'\n", .{parser_instance.lexer.pos, parser_instance.lexer.line, parser_instance.lexer.peek()});
     
-    const result = parser.parse(input);
+    const result = parser.parse(allocator, input);
     if (result) |doc| {
         std.debug.print("Parse succeeded - this should fail!\n", .{});
-        std.debug.print("Final lexer state: pos={}, line={}, peek='{}'\n", .{parser_ptr.lexer.pos, parser_ptr.lexer.line, parser_ptr.lexer.peek()});
+        std.debug.print("Final lexer state: pos={}, line={}, peek='{}'\n", .{parser_instance.lexer.pos, parser_instance.lexer.line, parser_instance.lexer.peek()});
         if (doc.root) |root| {
             std.debug.print("Root type: {}\n", .{root.type});
         }
