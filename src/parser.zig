@@ -1817,12 +1817,6 @@ pub const Parser = struct {
             } else {
                 // We're not at a valid sequence item position
                 
-                // If we're at whitespace, skip it and continue to check for more items
-                if (Lexer.isLineBreak(self.lexer.peek()) or self.lexer.peek() == ' ' or self.lexer.peek() == '\t') {
-                    self.skipWhitespaceAndComments();
-                    continue;
-                }
-                
                 // If we have an established sequence indent and we see a '-' at different indent,
                 // that's an error (like ZVH3 case)
                 if (sequence_indent != null and self.lexer.peek() == '-' and 
